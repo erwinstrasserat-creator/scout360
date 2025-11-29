@@ -1,0 +1,9 @@
+{
+  "hosting": {
+    "site": "scout-365",
+    "source": ".",
+    "frameworksBackend": {
+      "region": "europe-west3"
+    }
+  }
+}
