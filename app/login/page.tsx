@@ -19,13 +19,25 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      // Firebase Login
       const cred = await signInWithEmailAndPassword(auth, email, password);
+
+      // 🔥 Token holen (wichtig für Middleware!)
+      const token = await cred.user.getIdToken();
+
+      // 🔥 Cookie setzen über API
+      await fetch("/api/setAuth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
 
       // Rolle laden
       const ref = doc(db, "userRoles", cred.user.uid);
       const snap = await getDoc(ref);
       const role = snap.exists() ? (snap.data().role as string) : "none";
 
+      // Weiterleiten nach Rolle
       if (role === "admin") {
         router.push("/admin");
       } else if (role === "reader") {
@@ -47,7 +59,9 @@ export default function LoginPage() {
         onSubmit={handleSubmit}
         className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-900/70 p-6 space-y-3 text-sm"
       >
-        <h1 className="text-xl font-semibold mb-2 text-center">Scout 360 Login</h1>
+        <h1 className="text-xl font-semibold mb-2 text-center">
+          Scout 360 Login
+        </h1>
 
         <div className="flex flex-col gap-1">
           <label className="text-xs text-slate-400">E-Mail</label>

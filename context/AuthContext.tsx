@@ -29,10 +29,23 @@ export function AuthProvider({ children }: any) {
       setUser(firebaseUser);
 
       if (firebaseUser) {
+        // Rolle holen
         const roleDoc = await getDoc(doc(db, "userRoles", firebaseUser.uid));
-        setRole(roleDoc.exists() ? roleDoc.data().role : "none");
+        const userRole = roleDoc.exists()
+          ? roleDoc.data().role
+          : "none";
+
+        setRole(userRole);
+
+        // 🔥 Cookie setzen (für Middleware)
+        document.cookie = `auth=true; path=/; max-age=86400; SameSite=Lax`;
+        document.cookie = `role=${userRole}; path=/; max-age=86400; SameSite=Lax`;
       } else {
         setRole(null);
+
+        // 🔥 Cookies löschen
+        document.cookie = "auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie = "role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       }
 
       setLoading(false);
@@ -42,7 +55,12 @@ export function AuthProvider({ children }: any) {
   }, []);
 
   const logout = async () => {
+    // Erst Firebase-Logout
     await signOut(auth);
+
+    // Dann Cookies löschen
+    document.cookie = "auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    document.cookie = "role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   };
 
   return (
