@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -9,6 +9,46 @@ import {
   getDocs,
   setDoc,
 } from "firebase/firestore";
+
+type Player = {
+  apiId?: number;
+  name?: string;
+  age?: number | null;
+  heightCm?: number | null;
+  position?: string | null;
+  foot?: string | null;
+  league?: string | null;
+  club?: string | null;
+  stats?: {
+    defensiv?: number;
+    intelligenz?: number;
+    offensiv?: number;
+    physis?: number;
+    technik?: number;
+    tempo?: number;
+  };
+  traits?: string[];
+};
+
+type NeedDoc = {
+  id: string;
+  position?: string;
+  minAge?: number | null;
+  maxAge?: number | null;
+  heightMin?: number | null;
+  heightMax?: number | null;
+  preferredFoot?: string | null;
+  minStats?: {
+    defensiv?: number;
+    intelligenz?: number;
+    offensiv?: number;
+    physis?: number;
+    technik?: number;
+    tempo?: number;
+  } | null;
+  requiredTraits?: string[] | null;
+  leagues?: string[] | null;
+};
 
 type NeedFilter = {
   heightMin: number | null;
@@ -26,12 +66,43 @@ type NeedFilter = {
     tempo?: number;
   } | null;
   requiredTraits: string[] | null;
-  leagues: string[] | null; // ⬅️ Für Multi-Select
+  leagues: string[] | null;
 };
 
+// Fixe Ligen-Konfiguration mit API-Football IDs
+const LEAGUES = {
+  topEurope: [
+    { id: 39, name: "Premier League" },
+    { id: 140, name: "La Liga" },
+    { id: 78, name: "Bundesliga" },
+    { id: 135, name: "Serie A" },
+    { id: 61, name: "Ligue 1" },
+  ],
+  restEurope: [
+    { id: 94, name: "Primeira Liga (Portugal)" },
+    { id: 88, name: "Eredivisie (Niederlande)" },
+    { id: 144, name: "Pro League (Belgien)" },
+  ],
+  asia: [
+    { id: 98, name: "J-League (Japan)" },
+    { id: 292, name: "K-League 1 (Südkorea)" },
+  ],
+  africa: [
+    { id: 233, name: "Egypt Premier League" },
+    { id: 196, name: "South Africa Premier Division" },
+    { id: 200, name: "Morocco Botola Pro" },
+  ],
+};
+
+const SEASONS = [2023, 2024, 2025, 2026];
+
 export default function AdminSeedPage() {
-  const [fileContent, setFileContent] = useState<any[]>([]);
-  const [status, setStatus] = useState<string | null>(null);
+  const [needs, setNeeds] = useState<NeedDoc[]>([]);
+  const [selectedNeedId, setSelectedNeedId] = useState<string>("");
+
+  const [season, setSeason] = useState<number>(2025); // Default 2025
+  const [selectedLeagueIds, setSelectedLeagueIds] = useState<number[]>([]);
+
   const [filter, setFilter] = useState<NeedFilter>({
     heightMin: null,
     heightMax: null,
@@ -44,104 +115,180 @@ export default function AdminSeedPage() {
     leagues: null,
   });
 
-  const [allLeagues, setAllLeagues] = useState<string[]>([]);
+  const [status, setStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  // Datei laden
-  const handleFile = async (e: any) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Needs laden
+  useEffect(() => {
+    const loadNeeds = async () => {
+      const snap = await getDocs(collection(db, "needs"));
+      const list: NeedDoc[] = snap.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as any),
+      }));
+      setNeeds(list);
+    };
 
-    const text = await file.text();
-    try {
-      const json = JSON.parse(text);
-      if (!Array.isArray(json)) {
-        setStatus("❌ JSON muss ein Array sein");
-        return;
-      }
+    loadNeeds();
+  }, []);
 
-      // Alle Ligen extrahieren (für Multi-Select)
-      const leagues = Array.from(
-        new Set(json.map((p: any) => p.league).filter(Boolean))
-      ).sort();
+  // Need als Filter übernehmen
+  const applyNeedAsFilter = (needId: string) => {
+    setSelectedNeedId(needId);
 
-      setAllLeagues(leagues);
-      setFileContent(json);
-      setStatus(`✔️ Datei geladen • ${json.length} Spieler`);
-    } catch (err) {
-      setStatus("❌ Fehler beim Lesen der Datei");
-    }
+    const nd = needs.find((n) => n.id === needId);
+    if (!nd) return;
+
+    const newFilter: NeedFilter = {
+      heightMin: nd.heightMin ?? null,
+      heightMax: nd.heightMax ?? null,
+      minAge: nd.minAge ?? null,
+      maxAge: nd.maxAge ?? null,
+      preferredFoot: nd.preferredFoot ?? null,
+      position: nd.position ?? null,
+      minStats: nd.minStats ?? null,
+      requiredTraits: nd.requiredTraits ?? null,
+      leagues: nd.leagues ?? null,
+    };
+
+    setFilter(newFilter);
+    setStatus("Filter aus Need übernommen.");
   };
 
-  // Filter anwenden
-  const applyFilter = (p: any) => {
-    // Height
-    if (filter.heightMin && p.heightCm < filter.heightMin) return false;
-    if (filter.heightMax && p.heightCm > filter.heightMax) return false;
+  const toggleLeague = (id: number) => {
+    setSelectedLeagueIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
 
-    // Age
-    if (filter.minAge && p.age < filter.minAge) return false;
-    if (filter.maxAge && p.age > filter.maxAge) return false;
+  // Prüfen, ob Spieler zum Filter passt
+  const matchesFilter = (p: Player): boolean => {
+    // Alter
+    if (filter.minAge !== null && (p.age ?? 0) < filter.minAge) return false;
+    if (filter.maxAge !== null && (p.age ?? 0) > filter.maxAge) return false;
+
+    // Größe
+    if (filter.heightMin !== null && (p.heightCm ?? 0) < filter.heightMin)
+      return false;
+    if (filter.heightMax !== null && (p.heightCm ?? 0) > filter.heightMax)
+      return false;
 
     // Position
-    if (filter.position && p.position !== filter.position) return false;
-
-    // Preferred foot
-    if (filter.preferredFoot && p.foot !== filter.preferredFoot) return false;
-
-    // League filter
-    if (filter.leagues && filter.leagues.length > 0) {
-      if (!filter.leagues.includes(p.league)) return false;
+    if (
+      filter.position &&
+      p.position &&
+      p.position.toLowerCase() !== filter.position.toLowerCase()
+    ) {
+      return false;
     }
 
-    // Stats
-    if (filter.minStats) {
-      for (const key of Object.keys(filter.minStats)) {
-        const value = (filter.minStats as any)[key];
-        if (value && p.stats?.[key] < value) return false;
+    // Bevorzugter Fuß
+    if (
+      filter.preferredFoot &&
+      p.foot &&
+      filter.preferredFoot.toLowerCase() !== "egal"
+    ) {
+      if (p.foot.toLowerCase() !== filter.preferredFoot.toLowerCase()) {
+        return false;
       }
     }
 
-    // Required traits
+    // Ligen (Need-spezifisch)
+    if (filter.leagues && filter.leagues.length > 0) {
+      if (!p.league || !filter.leagues.includes(p.league)) return false;
+    }
+
+    // Stats – nur wenn sowohl Filter als auch Player stats haben
+    if (filter.minStats && p.stats) {
+      const keys = Object.keys(filter.minStats) as (keyof Player["stats"])[];
+      for (const key of keys) {
+        const minValue = filter.minStats[key];
+        if (typeof minValue === "number") {
+          const playerValue = p.stats?.[key] ?? 0;
+          if (playerValue < minValue) return false;
+        }
+      }
+    }
+
+    // Traits
     if (
       filter.requiredTraits &&
       filter.requiredTraits.length > 0 &&
-      (!p.traits ||
-        !filter.requiredTraits.every((t) =>
-          p.traits.map((x: string) => x.toLowerCase()).includes(t.toLowerCase())
-        ))
-    )
+      (!p.traits || p.traits.length === 0)
+    ) {
       return false;
+    }
+
+    if (
+      filter.requiredTraits &&
+      filter.requiredTraits.length > 0 &&
+      p.traits &&
+      p.traits.length > 0
+    ) {
+      const playerTraitsLower = p.traits.map((t) => t.toLowerCase());
+      for (const t of filter.requiredTraits) {
+        if (!playerTraitsLower.includes(t.toLowerCase())) {
+          return false;
+        }
+      }
+    }
 
     return true;
   };
 
-  // Spieler importieren
-  const uploadPlayers = async () => {
-    if (fileContent.length === 0) {
-      setStatus("❌ Keine Datei geladen");
+  const importFromApi = async () => {
+    if (!selectedLeagueIds.length) {
+      setStatus("❌ Bitte mindestens eine Liga auswählen.");
       return;
     }
 
-    const filtered = fileContent.filter(applyFilter);
-
-    setStatus(`⏳ Importiere ${filtered.length} Spieler…`);
+    setLoading(true);
+    setStatus("⏳ Lade Spieler aus API-Football…");
 
     try {
+      const res = await fetch("/api/fetchPlayers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          season,
+          leagueIds: selectedLeagueIds,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error("fetchPlayers error:", text);
+        setStatus("❌ Fehler beim Abrufen der Spieler.");
+        setLoading(false);
+        return;
+      }
+
+      const players: Player[] = await res.json();
+      const filtered = players.filter(matchesFilter);
+
+      setStatus(
+        `⏳ Importiere ${filtered.length} von ${players.length} geladenen Spielern…`
+      );
+
       for (const p of filtered) {
         await setDoc(doc(collection(db, "players")), p);
       }
-      setStatus(`✔️ ${filtered.length} Spieler erfolgreich importiert!`);
-    } catch (error) {
-      console.error(error);
-      setStatus("❌ Fehler beim Importieren");
+
+      setStatus(
+        `✔️ Import abgeschlossen: ${filtered.length} Spieler gespeichert.`
+      );
+    } catch (err) {
+      console.error(err);
+      setStatus("❌ Unerwarteter Fehler beim Import.");
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Alle Spieler löschen
   const clearDatabase = async () => {
-    if (!confirm("Sicher ALLE Spieler löschen?")) return;
+    if (!confirm("Sicher, dass du ALLE Spieler löschen möchtest?")) return;
 
-    setStatus("⏳ Lösche Datenbank…");
+    setStatus("⏳ Lösche Spieler…");
 
     const snap = await getDocs(collection(db, "players"));
     for (const d of snap.docs) {
@@ -152,56 +299,145 @@ export default function AdminSeedPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-lg font-semibold">Spieler-Import (Seed)</h2>
+    <div className="space-y-6 p-6">
+      <h2 className="text-lg font-semibold">Spieler Import (Seed)</h2>
 
-      {/* Datei Upload */}
-      <div className="rounded-xl border p-4 bg-slate-900/60 space-y-4">
-        <input type="file" accept=".json" onChange={handleFile} />
+      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-6">
+        {/* Need Auswahl */}
+        <div className="space-y-2">
+          <p className="text-sm text-slate-300">
+            1. Wähle eine Need als Filter:
+          </p>
+          <select
+            value={selectedNeedId}
+            onChange={(e) => applyNeedAsFilter(e.target.value)}
+            className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full"
+          >
+            <option value="">Keine Need (nur Liga/Season)</option>
+            {needs.map((n) => (
+              <option key={n.id} value={n.id}>
+                {n.position ?? "Ohne Position"} – Alter{" "}
+                {n.minAge ?? "?"}-{n.maxAge ?? "?"}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        {/* Multi-Select League */}
-        {allLeagues.length > 0 && (
-          <div>
-            <p className="text-sm mb-1">Ligen auswählen:</p>
-            <select
-              multiple
-              className="w-full bg-slate-800 border p-2 rounded"
-              onChange={(e) => {
-                const opts = Array.from(e.target.selectedOptions).map(
-                  (o) => o.value
-                );
-                setFilter((f) => ({ ...f, leagues: opts }));
-              }}
-            >
-              {allLeagues.map((lg) => (
-                <option key={lg}>{lg}</option>
+        {/* Season */}
+        <div className="space-y-2">
+          <p className="text-sm text-slate-300">
+            2. Saison auswählen (Season):
+          </p>
+          <select
+            value={season}
+            onChange={(e) => setSeason(Number(e.target.value))}
+            className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full"
+          >
+            {SEASONS.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Ligen Auswahl */}
+        <div className="space-y-3">
+          <p className="text-sm text-slate-300">
+            3. Ligen auswählen (Multi-Select):
+          </p>
+
+          <div className="grid md:grid-cols-2 gap-4 text-sm">
+            {/* Top Europa */}
+            <div className="border border-slate-800 rounded-lg p-3">
+              <div className="font-semibold mb-2">Top-Ligen Europa</div>
+              {LEAGUES.topEurope.map((lg) => (
+                <label
+                  key={lg.id}
+                  className="flex items-center gap-2 text-slate-300"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedLeagueIds.includes(lg.id)}
+                    onChange={() => toggleLeague(lg.id)}
+                  />
+                  {lg.name}
+                </label>
               ))}
-            </select>
+            </div>
+
+            {/* Rest Europa */}
+            <div className="border border-slate-800 rounded-lg p-3">
+              <div className="font-semibold mb-2">Rest Europa</div>
+              {LEAGUES.restEurope.map((lg) => (
+                <label
+                  key={lg.id}
+                  className="flex items-center gap-2 text-slate-300"
+                >
+                    <input
+                      type="checkbox"
+                      checked={selectedLeagueIds.includes(lg.id)}
+                      onChange={() => toggleLeague(lg.id)}
+                    />
+                    {lg.name}
+                </label>
+              ))}
+            </div>
+
+            {/* Asien */}
+            <div className="border border-slate-800 rounded-lg p-3">
+              <div className="font-semibold mb-2">Asien (Japan / Korea)</div>
+              {LEAGUES.asia.map((lg) => (
+                <label
+                  key={lg.id}
+                  className="flex items-center gap-2 text-slate-300"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedLeagueIds.includes(lg.id)}
+                    onChange={() => toggleLeague(lg.id)}
+                  />
+                  {lg.name}
+                </label>
+              ))}
+            </div>
+
+            {/* Afrika */}
+            <div className="border border-slate-800 rounded-lg p-3">
+              <div className="font-semibold mb-2">Afrika</div>
+              {LEAGUES.africa.map((lg) => (
+                <label
+                  key={lg.id}
+                  className="flex items-center gap-2 text-slate-300"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedLeagueIds.includes(lg.id)}
+                    onChange={() => toggleLeague(lg.id)}
+                  />
+                  {lg.name}
+                </label>
+              ))}
+            </div>
           </div>
-        )}
+        </div>
 
         {/* Status */}
-        {status && <div className="text-emerald-400 text-sm">{status}</div>}
-
-        {/* JSON Preview */}
-        {fileContent.length > 0 && (
-          <pre className="max-h-64 overflow-auto text-xs bg-slate-950 p-3 border rounded">
-            {JSON.stringify(fileContent.slice(0, 20), null, 2)}
-          </pre>
-        )}
+        {status && <div className="text-sm text-emerald-400">{status}</div>}
 
         {/* Buttons */}
         <div className="flex gap-4">
           <button
-            onClick={uploadPlayers}
-            className="bg-emerald-500 text-slate-900 px-4 py-2 rounded font-semibold"
+            onClick={importFromApi}
+            disabled={loading}
+            className="rounded-lg bg-emerald-500 px-4 py-2 text-slate-900 font-semibold hover:bg-emerald-400 disabled:opacity-60"
           >
-            Importieren
+            {loading ? "Import läuft…" : "Spieler laden & importieren"}
           </button>
 
           <button
             onClick={clearDatabase}
-            className="bg-red-500 text-slate-900 px-4 py-2 rounded font-semibold"
+            className="rounded-lg bg-red-500 px-4 py-2 text-slate-900 font-semibold hover:bg-red-400"
           >
             Datenbank leeren
           </button>
