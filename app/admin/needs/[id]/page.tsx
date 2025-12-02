@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
+type Player = {
+  league?: string;
+};
+
 const STAT_KEYS = [
   "defensiv",
   "intelligenz",
@@ -20,39 +24,45 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
 
   // Need laden
   useEffect(() => {
-    const load = async () => {
+    const loadNeed = async () => {
       const ref = doc(db, "needs", params.id);
       const snap = await getDoc(ref);
       if (snap.exists()) {
         const data = snap.data();
 
-        // Falls League-Feld fehlt
+        // Defaults
         if (!data.leagues) data.leagues = [];
-
-        setNeed(data);
-
-        // Falls Traits/Stats fehlen
         if (!data.minStats) data.minStats = {};
         if (!data.requiredTraits) data.requiredTraits = [];
+
+        setNeed(data);
       }
     };
 
-    load();
+    loadNeed();
   }, [params.id]);
 
-  // Ligen global laden → aus Players extrahieren
+  // Ligen laden (typisiert!)
   useEffect(() => {
     const loadLeagues = async () => {
       try {
-        const snap = await fetch("/api/players").then((r) => r.json());
+        const res = await fetch("/api/players");
+        const players: Player[] = await res.json();
 
         const leagues = Array.from(
-          new Set(snap.map((p: any) => p.league).filter(Boolean))
+          new Set(
+            players
+              .map((p) => p.league)
+              .filter((x): x is string => typeof x === "string" && x.length > 0)
+          )
         ).sort();
 
         setAllLeagues(leagues);
-      } catch {}
+      } catch (err) {
+        console.error("Fehler beim Laden der Ligen:", err);
+      }
     };
+
     loadLeagues();
   }, []);
 
@@ -60,7 +70,6 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
     return <div className="p-6">Need wird geladen…</div>;
   }
 
-  // Need speichern
   const saveNeed = async () => {
     setSaving(true);
     await updateDoc(doc(db, "needs", params.id), need);
@@ -82,7 +91,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
         />
       </div>
 
-      {/* Age */}
+      {/* Alter */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-sm text-slate-400">Alter min</label>
@@ -109,7 +118,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      {/* Height */}
+      {/* Größe */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="text-sm text-slate-400">Größe min (cm)</label>
@@ -136,7 +145,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      {/* preferred foot */}
+      {/* Preferred Foot */}
       <div className="space-y-1">
         <label className="text-sm text-slate-400">Bevorzugter Fuß</label>
         <select
@@ -153,7 +162,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
         </select>
       </div>
 
-      {/* Multi-League Selector */}
+      {/* Multi-League Select */}
       <div className="space-y-1">
         <label className="text-sm text-slate-400">Ligen</label>
         <select
@@ -173,7 +182,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
         </select>
       </div>
 
-      {/* Stats */}
+      {/* Minimum Stats */}
       <div className="space-y-1">
         <label className="text-sm text-slate-400">Minimum-Stats</label>
         <div className="grid grid-cols-3 gap-3">
@@ -204,7 +213,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
         <label className="text-sm text-slate-400">Benötigte Traits</label>
         <input
           type="text"
-          placeholder="kommagetrennte Liste"
+          placeholder="kommagetrennt"
           value={need.requiredTraits?.join(", ") || ""}
           onChange={(e) =>
             setNeed({
@@ -219,7 +228,6 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
         />
       </div>
 
-      {/* Save Button */}
       <button
         onClick={saveNeed}
         disabled={saving}
