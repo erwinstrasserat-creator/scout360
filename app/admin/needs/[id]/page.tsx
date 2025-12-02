@@ -4,10 +4,6 @@ import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
-type Player = {
-  league?: string;
-};
-
 const STAT_KEYS = [
   "defensiv",
   "intelligenz",
@@ -15,11 +11,51 @@ const STAT_KEYS = [
   "physis",
   "technik",
   "tempo",
+] as const;
+
+// Gleiche Ligen wie in Seed
+const LEAGUES = {
+  topEurope: [
+    "Premier League",
+    "La Liga",
+    "Bundesliga",
+    "Serie A",
+    "Ligue 1",
+  ],
+  restEurope: [
+    "Primeira Liga (Portugal)",
+    "Eredivisie (Niederlande)",
+    "Pro League (Belgien)",
+  ],
+  asia: ["J-League (Japan)", "K-League 1 (Südkorea)"],
+  africa: [
+    "Egypt Premier League",
+    "South Africa Premier Division",
+    "Morocco Botola Pro",
+  ],
+};
+
+const ALL_LEAGUES: string[] = [
+  ...LEAGUES.topEurope,
+  ...LEAGUES.restEurope,
+  ...LEAGUES.asia,
+  ...LEAGUES.africa,
 ];
 
+type NeedData = {
+  position?: string;
+  minAge?: number | null;
+  maxAge?: number | null;
+  heightMin?: number | null;
+  heightMax?: number | null;
+  preferredFoot?: string | null;
+  minStats?: Record<string, number>;
+  requiredTraits?: string[];
+  leagues?: string[];
+};
+
 export default function EditNeedPage({ params }: { params: { id: string } }) {
-  const [need, setNeed] = useState<any>(null);
-  const [allLeagues, setAllLeagues] = useState<string[]>([]);
+  const [need, setNeed] = useState<NeedData | null>(null);
   const [saving, setSaving] = useState(false);
 
   // Need laden
@@ -28,43 +64,30 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
       const ref = doc(db, "needs", params.id);
       const snap = await getDoc(ref);
       if (snap.exists()) {
-        const data = snap.data();
+        const data = snap.data() as NeedData;
 
-        // Defaults
         if (!data.leagues) data.leagues = [];
         if (!data.minStats) data.minStats = {};
         if (!data.requiredTraits) data.requiredTraits = [];
 
         setNeed(data);
+      } else {
+        setNeed({
+          position: "",
+          minAge: null,
+          maxAge: null,
+          heightMin: null,
+          heightMax: null,
+          preferredFoot: null,
+          minStats: {},
+          requiredTraits: [],
+          leagues: [],
+        });
       }
     };
 
     loadNeed();
   }, [params.id]);
-
-  // Ligen laden (typisiert!)
-  useEffect(() => {
-    const loadLeagues = async () => {
-      try {
-        const res = await fetch("/api/players");
-        const players: Player[] = await res.json();
-
-        const leagues = Array.from(
-          new Set(
-            players
-              .map((p) => p.league)
-              .filter((x): x is string => typeof x === "string" && x.length > 0)
-          )
-        ).sort();
-
-        setAllLeagues(leagues);
-      } catch (err) {
-        console.error("Fehler beim Laden der Ligen:", err);
-      }
-    };
-
-    loadLeagues();
-  }, []);
 
   if (!need) {
     return <div className="p-6">Need wird geladen…</div>;
@@ -72,7 +95,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
 
   const saveNeed = async () => {
     setSaving(true);
-    await updateDoc(doc(db, "needs", params.id), need);
+    await updateDoc(doc(db, "needs", params.id), need as any);
     setSaving(false);
     alert("Need gespeichert!");
   };
@@ -97,9 +120,12 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
           <label className="text-sm text-slate-400">Alter min</label>
           <input
             type="number"
-            value={need.minAge || ""}
+            value={need.minAge ?? ""}
             onChange={(e) =>
-              setNeed({ ...need, minAge: Number(e.target.value) })
+              setNeed({
+                ...need,
+                minAge: e.target.value ? Number(e.target.value) : null,
+              })
             }
             className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
           />
@@ -109,9 +135,12 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
           <label className="text-sm text-slate-400">Alter max</label>
           <input
             type="number"
-            value={need.maxAge || ""}
+            value={need.maxAge ?? ""}
             onChange={(e) =>
-              setNeed({ ...need, maxAge: Number(e.target.value) })
+              setNeed({
+                ...need,
+                maxAge: e.target.value ? Number(e.target.value) : null,
+              })
             }
             className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
           />
@@ -124,9 +153,12 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
           <label className="text-sm text-slate-400">Größe min (cm)</label>
           <input
             type="number"
-            value={need.heightMin || ""}
+            value={need.heightMin ?? ""}
             onChange={(e) =>
-              setNeed({ ...need, heightMin: Number(e.target.value) })
+              setNeed({
+                ...need,
+                heightMin: e.target.value ? Number(e.target.value) : null,
+              })
             }
             className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
           />
@@ -136,9 +168,12 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
           <label className="text-sm text-slate-400">Größe max (cm)</label>
           <input
             type="number"
-            value={need.heightMax || ""}
+            value={need.heightMax ?? ""}
             onChange={(e) =>
-              setNeed({ ...need, heightMax: Number(e.target.value) })
+              setNeed({
+                ...need,
+                heightMax: e.target.value ? Number(e.target.value) : null,
+              })
             }
             className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
           />
@@ -151,7 +186,10 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
         <select
           value={need.preferredFoot || ""}
           onChange={(e) =>
-            setNeed({ ...need, preferredFoot: e.target.value || null })
+            setNeed({
+              ...need,
+              preferredFoot: e.target.value || null,
+            })
           }
           className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
         >
@@ -176,8 +214,10 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
           }}
           className="bg-slate-900 border border-slate-700 p-2 rounded w-full h-32"
         >
-          {allLeagues.map((l) => (
-            <option key={l}>{l}</option>
+          {ALL_LEAGUES.map((l) => (
+            <option key={l} value={l}>
+              {l}
+            </option>
           ))}
         </select>
       </div>
@@ -191,13 +231,13 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
               <label className="text-xs text-slate-500">{key}</label>
               <input
                 type="number"
-                value={need.minStats[key] || ""}
+                value={need.minStats?.[key] ?? ""}
                 onChange={(e) =>
                   setNeed({
                     ...need,
                     minStats: {
-                      ...need.minStats,
-                      [key]: Number(e.target.value),
+                      ...(need.minStats || {}),
+                      [key]: e.target.value ? Number(e.target.value) : 0,
                     },
                   })
                 }
@@ -214,7 +254,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
         <input
           type="text"
           placeholder="kommagetrennt"
-          value={need.requiredTraits?.join(", ") || ""}
+          value={(need.requiredTraits || []).join(", ")}
           onChange={(e) =>
             setNeed({
               ...need,
@@ -231,7 +271,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
       <button
         onClick={saveNeed}
         disabled={saving}
-        className="bg-emerald-500 px-4 py-2 text-slate-900 rounded font-semibold"
+        className="bg-emerald-500 px-4 py-2 text-slate-900 rounded font-semibold disabled:opacity-60"
       >
         {saving ? "Speichern…" : "Need speichern"}
       </button>

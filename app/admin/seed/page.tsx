@@ -1,4 +1,4 @@
-"use client";
+c"use client";
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
@@ -173,11 +173,12 @@ export default function AdminSeedPage() {
     if (filter.heightMax !== null && (p.heightCm ?? 0) > filter.heightMax)
       return false;
 
-    // Position
+    // Position (sehr grob – hier könntest du später Mapping machen)
     if (
       filter.position &&
       p.position &&
-      p.position.toLowerCase() !== filter.position.toLowerCase()
+      filter.position.trim() !== "" &&
+      !p.position.toLowerCase().includes(filter.position.toLowerCase())
     ) {
       return false;
     }
@@ -185,15 +186,14 @@ export default function AdminSeedPage() {
     // Bevorzugter Fuß
     if (
       filter.preferredFoot &&
+      filter.preferredFoot.toLowerCase() !== "egal" &&
       p.foot &&
-      filter.preferredFoot.toLowerCase() !== "egal"
+      p.foot.toLowerCase() !== filter.preferredFoot.toLowerCase()
     ) {
-      if (p.foot.toLowerCase() !== filter.preferredFoot.toLowerCase()) {
-        return false;
-      }
+      return false;
     }
 
-    // Ligen (Need-spezifisch)
+    // Ligen aus Need (falls gesetzt)
     if (filter.leagues && filter.leagues.length > 0) {
       if (!p.league || !filter.leagues.includes(p.league)) return false;
     }
@@ -251,7 +251,8 @@ export default function AdminSeedPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           season,
-          leagueIds: selectedLeagueIds,
+          // 🔥 WICHTIG: Name muss leagueIds heißen, wie in deiner API
+          leagueIds: selectedLeagueIds.map((id) => Number(id)),
         }),
       });
 
@@ -374,12 +375,12 @@ export default function AdminSeedPage() {
                   key={lg.id}
                   className="flex items-center gap-2 text-slate-300"
                 >
-                    <input
-                      type="checkbox"
-                      checked={selectedLeagueIds.includes(lg.id)}
-                      onChange={() => toggleLeague(lg.id)}
-                    />
-                    {lg.name}
+                  <input
+                    type="checkbox"
+                    checked={selectedLeagueIds.includes(lg.id)}
+                    onChange={() => toggleLeague(lg.id)}
+                  />
+                  {lg.name}
                 </label>
               ))}
             </div>
