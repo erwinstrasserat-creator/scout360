@@ -5,9 +5,7 @@ export const runtime = "nodejs";
 
 const API_FOOTBALL_BASE = "https://v3.football.api-sports.io";
 
-/**
- * API-Football Wrapper
- */
+/** Allgemeiner API-Football Fetch Wrapper */
 async function apiFootballFetch(
   path: string,
   params: Record<string, string | number>
@@ -19,9 +17,9 @@ async function apiFootballFetch(
   }
 
   const url = new URL(API_FOOTBALL_BASE + path);
-  Object.entries(params).forEach(([k, v]) =>
-    url.searchParams.set(k, String(v))
-  );
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, String(value));
+  }
 
   const res = await fetch(url.toString(), {
     headers: {
@@ -37,143 +35,44 @@ async function apiFootballFetch(
   return res.json();
 }
 
-/**
- * Höhe aus "180 cm" → 180
- */
+/** Höhe in cm parsen */
 function parseHeightToCm(height: string | undefined | null): number | null {
   if (!height) return null;
-  const n = parseInt(height);
-  return Number.isNaN(n) ? null : n;
+  const parsed = parseInt(height);
+  return isNaN(parsed) ? null : parsed;
 }
 
-/**
- * Leihstatus aus Transfers (falls vorhanden)
- */
-function extractLoanInfo(transfers: any[] | undefined | null): {
+/** Leihstatus aus Transfers extrahieren */
+function extractLoanInfo(transfers: any[]): {
   onLoan: boolean;
   loanFrom: string | null;
 } {
   if (!Array.isArray(transfers)) return { onLoan: false, loanFrom: null };
 
   for (const t of transfers) {
-    const type = (t?.type ?? "").toString().toLowerCase();
-    if (type.includes("loan")) {
-      // bei API-Football ist "in" normalerweise der verleihende Club
-      const loanFrom = t?.teams?.in?.name ?? null;
-      return { onLoan: true, loanFrom };
+    if (t.type && typeof t.type === "string") {
+      if (t.type.toLowerCase().includes("loan")) {
+        // Achtung: je nach API-Struktur ggf. in/out vertauscht – hier nur grob
+        return {
+          onLoan: true,
+          loanFrom: t.teams?.in?.name ?? null,
+        };
+      }
     }
   }
 
   return { onLoan: false, loanFrom: null };
 }
 
-/**
- * Marktwert-Score (0–100) + grobe €-Schätzung
- * -> rein heuristisch, KEINE echten Transfermarkt-Werte
- */
-function computeMarketScore(player: {
-  age: number | null;
-  leagueId: number | null;
-  minutes: number;
-  rating: number | null;
-  position: string | null;
-}): { marketScore: number; marketValueEstimate: number } {
-  const { age, leagueId, minutes, rating, position } = player;
-
-  // 1) Liga-Stärke (Beispiele, kannst du anpassen)
-  const leagueTierMap: Record<number, number> = {
-    // England
-    39: 1, // Premier League
-    40: 2,
-    41: 3,
-    // Deutschland
-    78: 1,
-    79: 2,
-    80: 3,
-    // Spanien
-    140: 1,
-    141: 2,
-    // Italien
-    135: 1,
-    136: 2,
-    138: 3,
-    // Frankreich
-    61: 1,
-    62: 2,
-    // Türkei
-    203: 2,
-    204: 3,
-    // Rest europa – Beispiel
-    88: 2,
-    94: 2,
-    144: 2,
-    218: 3,
-    87: 3,
-    96: 2,
-    179: 3,
-    45: 3,
-    // Afrika / Asien kannst du später ergänzen
-  };
-
-  const tier = leagueId ? leagueTierMap[leagueId] ?? 3 : 4; // 1=Top, 4=niedrig
-  const leagueFactor = 1 - (tier - 1) * 0.15; // 1 → 1.0, 2 → 0.85, 3 → 0.7, 4 → 0.55
-
-  // 2) Alters-Faktor – Peak bei ~24
-  let ageFactor = 0.6;
-  if (age != null) {
-    const diff = Math.abs(age - 24);
-    ageFactor = Math.max(0.2, 1 - diff * 0.05); // pro Jahr ±5 % weniger
-  }
-
-  // 3) Einsatzzeit
-  const minutesFactor = Math.min(1, minutes / 2500); // ab ~2500 Minuten ~1.0
-
-  // 4) Performance (Rating)
-  let ratingFactor = 0.6;
-  if (rating && rating > 0) {
-    ratingFactor = Math.min(1, Math.max(0.4, (rating - 5.5) / 2)); // 6.5–7.5 → ok bis top
-  }
-
-  // 5) Positions-Bonus (Zentrum leicht höher)
-  let posFactor = 1;
-  const pos = (position ?? "").toLowerCase();
-  if (pos.includes("attacking") || pos.startsWith("cf") || pos.startsWith("st")) {
-    posFactor = 1.05;
-  } else if (pos.includes("centre") || pos.includes("central")) {
-    posFactor = 1.0;
-  } else if (pos.includes("full") || pos.includes("wing back")) {
-    posFactor = 0.95;
-  }
-
-  // Score gewichtete Mischung
-  let score =
-    30 * leagueFactor +
-    25 * ageFactor +
-    25 * minutesFactor +
-    20 * ratingFactor;
-
-  score *= posFactor;
-
-  // Clamp 0–100
-  score = Math.max(0, Math.min(100, score));
-
-  // Marktwert grob schätzen: nicht-linear skalieren
-  // 0 → ~0, 50 → ~5 Mio, 100 → ~40 Mio (nur Beispiel!)
-  const valueEstimate = Math.round(((score / 100) ** 2.2) * 40_000_000);
-
-  return { marketScore: Math.round(score), marketValueEstimate: valueEstimate };
-}
-
-/**
- * POST – Spieler laden
- */
+/** POST – Spieler holen & in vereinfachtes Format bringen */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
     const season = Number(body.season) || 2025;
+
     const leagueIds: number[] = Array.isArray(body.leagueIds)
-      ? body.leagueIds.map((x: any) => Number(x)).filter((x) => !Number.isNaN(x))
+      ? body.leagueIds.map((n) => Number(n)).filter((n) => !isNaN(n))
       : [];
 
     if (!leagueIds.length) {
@@ -187,94 +86,84 @@ export async function POST(req: NextRequest) {
     const playerCache = new Set<number>();
 
     for (const leagueId of leagueIds) {
-      // 1) Teams der Liga
+      // 1️⃣ Teams laden
       const teamsJson = await apiFootballFetch("/teams", {
         league: leagueId,
         season,
       });
 
-      const teams: any[] = Array.isArray(teamsJson.response)
+      const teams = Array.isArray(teamsJson.response)
         ? teamsJson.response
         : [];
 
-      const teamIds: number[] = teams
+      const teamIds = teams
         .map((t) => t.team?.id)
-        .filter((id): id is number => typeof id === "number");
+        .filter((id) => typeof id === "number");
 
-      // 2) Für jedes Team Spieler holen
+      // 2️⃣ Für jede Mannschaft Spieler holen
       for (const teamId of teamIds) {
         let page = 1;
-        const maxPages = 10;
 
-        while (page <= maxPages) {
+        while (page <= 10) {
           const playersJson = await apiFootballFetch("/players", {
             team: teamId,
             season,
             page,
           });
 
-          const respArr: any[] = Array.isArray(playersJson.response)
+          const playersArr = Array.isArray(playersJson.response)
             ? playersJson.response
             : [];
 
-          if (!respArr.length) break;
+          if (!playersArr.length) break;
 
-          for (const r of respArr) {
-            const p = r.player;
-            const stat = Array.isArray(r.statistics) ? r.statistics[0] : null;
+          for (const item of playersArr) {
+            const p = item.player;
+            const stats = Array.isArray(item.statistics)
+              ? item.statistics[0]
+              : null;
 
             if (!p?.id) continue;
-            if (playerCache.has(p.id)) continue;
+            if (playerCache.has(p.id)) continue; // Duplikate vermeiden
             playerCache.add(p.id);
 
-            const minutes = stat?.games?.minutes ?? 0;
-            const ratingRaw = stat?.games?.rating;
-            const rating =
-              typeof ratingRaw === "string" ? Number(ratingRaw) : ratingRaw ?? null;
-
-            const { onLoan, loanFrom } = extractLoanInfo(p.transfers);
-
-            // Score berechnen
-            const market = computeMarketScore({
-              age: p.age ?? null,
-              leagueId: stat?.league?.id ?? null,
-              minutes,
-              rating,
-              position: stat?.games?.position ?? null,
-            });
+            const loan = extractLoanInfo(p.transfers ?? []);
 
             const playerObj = {
               apiId: p.id,
               name: p.name ?? null,
               age: p.age ?? null,
               heightCm: parseHeightToCm(p.height),
-              position: stat?.games?.position ?? null,
+              position: stats?.games?.position ?? null,
               foot: p.preferred_foot ?? null,
-              league: stat?.league?.name ?? null,
-              leagueId: stat?.league?.id ?? null,
-              club: stat?.team?.name ?? null,
+              league: stats?.league?.name ?? null,
+              club: stats?.team?.name ?? null,
 
-              onLoan,
-              loanFrom,
+              // Loan-Infos
+              onLoan: loan.onLoan,
+              loanFrom: loan.loanFrom,
 
+              // Marktwert wird später im Admin manuell gesetzt
+              marketValue: null as number | null,
+
+              // Stats – Platzhalter
               stats: {
-                appearances: stat?.games?.appearences ?? 0,
-                minutes,
-                goals: stat?.goals?.total ?? 0,
-                assists: stat?.goals?.assists ?? 0,
-                rating,
+                offensiv: null,
+                defensiv: null,
+                intelligenz: null,
+                physis: null,
+                technik: null,
+                tempo: null,
               },
 
               traits: [] as string[],
-
-              marketScore: market.marketScore,
-              marketValueEstimate: market.marketValueEstimate,
             };
 
             allPlayers.push(playerObj);
           }
 
-          if (!playersJson.paging || page >= playersJson.paging.total) break;
+          if (!playersJson.paging) break;
+          if (page >= playersJson.paging.total) break;
           page++;
         }
       }
