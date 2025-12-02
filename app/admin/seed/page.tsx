@@ -10,9 +10,9 @@ import {
   setDoc,
 } from "firebase/firestore";
 
-/* ---------------------------------------------------------
-   🔵 TYPE DEFINITIONS
---------------------------------------------------------- */
+/* ─────────────────────────────────────────
+   Typen
+─────────────────────────────────────────── */
 
 type Player = {
   apiId: number;
@@ -27,19 +27,21 @@ type Player = {
   loanFrom: string | null;
   stats?: any;
   traits?: string[];
+  marketScore?: number;
+  marketValueEstimate?: number;
 };
 
 type NeedDoc = {
   id: string;
-  position: string | null;
-  minAge: number | null;
-  maxAge: number | null;
-  heightMin: number | null;
-  heightMax: number | null;
-  preferredFoot: string | null;
-  requiredTraits: string[];
-  leagues: string[];
-  minStats: any | null;
+  position?: string;
+  minAge?: number | null;
+  maxAge?: number | null;
+  heightMin?: number | null;
+  heightMax?: number | null;
+  preferredFoot?: string | null;
+  requiredTraits?: string[] | null;
+  leagues?: string[] | null;
+  minStats?: any | null;
 };
 
 type NeedFilter = {
@@ -49,14 +51,14 @@ type NeedFilter = {
   maxAge: number | null;
   preferredFoot: string | null;
   position: string | null;
-  requiredTraits: string[];
+  requiredTraits: string[] | null;
   minStats: any | null;
-  leagues: string[];
+  leagues: string[] | null;
 };
 
-/* ---------------------------------------------------------
-   🔵 LEAGUES (Extended)
---------------------------------------------------------- */
+/* ─────────────────────────────────────────
+   Ligen (ID = API-Football)
+─────────────────────────────────────────── */
 
 const LEAGUES = {
   england: [
@@ -91,7 +93,7 @@ const LEAGUES = {
     { id: 94, name: "Primeira Liga (Portugal)" },
     { id: 144, name: "Pro League (Belgien)" },
     { id: 218, name: "Superliga (Dänemark)" },
-    { id: 87, name: "Superligaen (Schweden)" },
+    { id: 87, name: "Superligan (Schweden)" },
     { id: 96, name: "Premiership (Schottland)" },
     { id: 179, name: "Super League (Schweiz)" },
     { id: 45, name: "Superliga (Serbien)" },
@@ -109,9 +111,9 @@ const LEAGUES = {
 
 const SEASONS = [2023, 2024, 2025, 2026];
 
-/* ---------------------------------------------------------
-   🔵 COMPONENT
---------------------------------------------------------- */
+/* ─────────────────────────────────────────
+   Component
+─────────────────────────────────────────── */
 
 export default function AdminSeedPage() {
   const [needs, setNeeds] = useState<NeedDoc[]>([]);
@@ -126,112 +128,113 @@ export default function AdminSeedPage() {
     heightMax: null,
     minAge: null,
     maxAge: null,
-    preferredFoot: null,
-    position: null,
-    requiredTraits: [],
+    preferredFoot: "",
+    position: "",
+    requiredTraits: null,
     minStats: null,
-    leagues: [],
+    leagues: null,
   });
 
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  /* ---------------------------------------------------------
-     🔵 Load Needs (with automatic normalization)
-  --------------------------------------------------------- */
+  const hasNeedSelected = !!selectedNeedId;
+
+  /* Needs laden */
   useEffect(() => {
-    const loadNeeds = async () => {
+    const load = async () => {
       const snap = await getDocs(collection(db, "needs"));
-
-      const cleaned = snap.docs.map((d) => {
-        const n = d.data() as any;
-
-        return {
-          id: d.id,
-          position: n.position ?? null,
-          minAge: n.minAge ?? null,
-          maxAge: n.maxAge ?? null,
-          heightMin: n.heightMin ?? null,
-          heightMax: n.heightMax ?? null,
-          preferredFoot: n.preferredFoot ?? null,
-
-          requiredTraits: Array.isArray(n.requiredTraits)
-            ? n.requiredTraits
-            : [],
-
-          leagues: Array.isArray(n.leagues) ? n.leagues : [],
-
-          minStats:
-            n.minStats && typeof n.minStats === "object" ? n.minStats : null,
-        } as NeedDoc;
-      });
-
-      setNeeds(cleaned);
+      setNeeds(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
     };
-
-    loadNeeds();
+    load();
   }, []);
 
-  /* ---------------------------------------------------------
-     🔵 Apply Need To Filter
-  --------------------------------------------------------- */
+  /* Need übernehmen → Filter befüllen + sperren */
   const applyNeed = (id: string) => {
     setSelectedNeedId(id);
     const nd = needs.find((n) => n.id === id);
-    if (!nd) return;
+    if (!nd) {
+      // Need entfernt → Filter leeren
+      setFilter({
+        heightMin: null,
+        heightMax: null,
+        minAge: null,
+        maxAge: null,
+        preferredFoot: "",
+        position: "",
+        requiredTraits: null,
+        minStats: null,
+        leagues: null,
+      });
+      setStatus(null);
+      return;
+    }
 
     setFilter({
-      heightMin: nd.heightMin,
-      heightMax: nd.heightMax,
-      minAge: nd.minAge,
-      maxAge: nd.maxAge,
-      preferredFoot: nd.preferredFoot,
-      position: nd.position,
-      requiredTraits: nd.requiredTraits,
-      minStats: nd.minStats,
-      leagues: nd.leagues,
+      heightMin: nd.heightMin ?? null,
+      heightMax: nd.heightMax ?? null,
+      minAge: nd.minAge ?? null,
+      maxAge: nd.maxAge ?? null,
+      preferredFoot: nd.preferredFoot ?? "",
+      position: nd.position ?? "",
+      requiredTraits: nd.requiredTraits ?? null,
+      leagues: nd.leagues ?? null,
+      minStats: nd.minStats ?? null,
     });
 
-    setStatus("Filter aus Need übernommen.");
+    setStatus("Filter aus Need übernommen (Felder gesperrt).");
   };
 
-  /* ---------------------------------------------------------
-     🔵 Toggle League
-  --------------------------------------------------------- */
+  /* Ligen togglen */
   const toggleLeague = (id: number) => {
     setSelectedLeagueIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((n) => n !== id) : [...prev, id]
     );
   };
 
-  /* ---------------------------------------------------------
-     🔵 Filter Logic
-  --------------------------------------------------------- */
+  /* Filter-Helper fürs Manual-Edit (wenn kein Need gewählt) */
+  const updateFilterField = (field: keyof NeedFilter, value: any) => {
+    if (hasNeedSelected) return; // bei aktivem Need nicht überschreiben
+    setFilter((prev) => ({ ...prev, [field]: value }));
+  };
+
+  /* Spieler-Filter */
   const matchesFilter = (p: Player): boolean => {
     if (excludeLoans && p.onLoan) return false;
 
-    if (filter.minAge !== null && (p.age ?? 0) < filter.minAge) return false;
-    if (filter.maxAge !== null && (p.age ?? 0) > filter.maxAge) return false;
+    const { minAge, maxAge, heightMin, heightMax, position, preferredFoot } =
+      filter;
 
-    if (filter.heightMin !== null && (p.heightCm ?? 0) < filter.heightMin)
-      return false;
-    if (filter.heightMax !== null && (p.heightCm ?? 0) > filter.heightMax)
-      return false;
+    if (minAge !== null && (p.age ?? 0) < minAge) return false;
+    if (maxAge !== null && (p.age ?? 0) > maxAge) return false;
 
-    if (filter.position) {
-      if (!p.position?.toLowerCase().includes(filter.position.toLowerCase()))
+    if (heightMin !== null && (p.heightCm ?? 0) < heightMin) return false;
+    if (heightMax !== null && (p.heightCm ?? 0) > heightMax) return false;
+
+    if (position && position.trim() !== "") {
+      if (!p.position?.toLowerCase().includes(position.toLowerCase()))
         return false;
     }
+
+    if (
+      preferredFoot &&
+      preferredFoot !== "" &&
+      preferredFoot.toLowerCase() !== "egal"
+    ) {
+      const pf = preferredFoot.toLowerCase();
+      if (!p.foot || p.foot.toLowerCase() !== pf) return false;
+    }
+
+    // Traits / minStats könntest du später hier wieder aktivieren
 
     return true;
   };
 
-  /* ---------------------------------------------------------
-     🔵 Import From API
-  --------------------------------------------------------- */
+  /* Import aus API-Football */
   const importFromApi = async () => {
-    if (!selectedLeagueIds.length)
+    if (!selectedLeagueIds.length) {
       return setStatus("❌ Bitte mindestens eine Liga auswählen.");
+    }
 
     setLoading(true);
     setStatus("⏳ Lade Spieler…");
@@ -268,14 +271,12 @@ export default function AdminSeedPage() {
     } catch (err) {
       console.error(err);
       setStatus("❌ Fehler beim Import.");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
-  /* ---------------------------------------------------------
-     🔵 Delete database
-  --------------------------------------------------------- */
+  /* Datenbank leeren */
   const clearDatabase = async () => {
     if (!confirm("Alle Spieler löschen?")) return;
 
@@ -287,15 +288,13 @@ export default function AdminSeedPage() {
     setStatus("✔️ Datenbank geleert.");
   };
 
-  /* ---------------------------------------------------------
-     🔵 UI
-  --------------------------------------------------------- */
+  /* UI */
   return (
     <div className="space-y-6 p-6">
       <h2 className="text-lg font-semibold">Spieler Import (Seed)</h2>
 
       <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 space-y-6">
-        {/* NEED Auswahl */}
+        {/* Need Auswahl */}
         <div>
           <p className="text-sm text-slate-300">1. Need wählen:</p>
           <select
@@ -303,7 +302,7 @@ export default function AdminSeedPage() {
             onChange={(e) => applyNeed(e.target.value)}
             className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full"
           >
-            <option value="">Keine Need</option>
+            <option value="">Keine Need (Filter manuell setzen)</option>
             {needs.map((n) => (
               <option key={n.id} value={n.id}>
                 {n.position ?? "Position"} – Alter {n.minAge ?? "?"}-
@@ -327,21 +326,144 @@ export default function AdminSeedPage() {
           </select>
         </div>
 
-        {/* Loan checkbox */}
+        {/* Filter-Block (immer sichtbar) */}
+        <div className="space-y-3">
+          <p className="text-sm text-slate-300">
+            3. Filter (werden von Need übernommen – sonst manuell setzen):
+          </p>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Alter */}
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Alter min / max</label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={filter.minAge ?? ""}
+                  onChange={(e) =>
+                    updateFilterField(
+                      "minAge",
+                      e.target.value ? Number(e.target.value) : null
+                    )
+                  }
+                  disabled={hasNeedSelected}
+                  className="bg-slate-950 border border-slate-700 rounded px-2 py-1 w-full"
+                />
+                <input
+                  type="number"
+                  value={filter.maxAge ?? ""}
+                  onChange={(e) =>
+                    updateFilterField(
+                      "maxAge",
+                      e.target.value ? Number(e.target.value) : null
+                    )
+                  }
+                  disabled={hasNeedSelected}
+                  className="bg-slate-950 border border-slate-700 rounded px-2 py-1 w-full"
+                />
+              </div>
+            </div>
+
+            {/* Größe */}
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Größe min / max (cm)</label>
+              <div className="flex gap-2">
+                <input
+                  type="number"
+                  value={filter.heightMin ?? ""}
+                  onChange={(e) =>
+                    updateFilterField(
+                      "heightMin",
+                      e.target.value ? Number(e.target.value) : null
+                    )
+                  }
+                  disabled={hasNeedSelected}
+                  className="bg-slate-950 border border-slate-700 rounded px-2 py-1 w-full"
+                />
+                <input
+                  type="number"
+                  value={filter.heightMax ?? ""}
+                  onChange={(e) =>
+                    updateFilterField(
+                      "heightMax",
+                      e.target.value ? Number(e.target.value) : null
+                    )
+                  }
+                  disabled={hasNeedSelected}
+                  className="bg-slate-950 border border-slate-700 rounded px-2 py-1 w-full"
+                />
+              </div>
+            </div>
+
+            {/* Position */}
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Position (Textsuche)</label>
+              <input
+                type="text"
+                value={filter.position ?? ""}
+                onChange={(e) => updateFilterField("position", e.target.value)}
+                disabled={hasNeedSelected}
+                className="bg-slate-950 border border-slate-700 rounded px-2 py-1 w-full"
+              />
+            </div>
+
+            {/* Bevorzugter Fuß */}
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Bevorzugter Fuß</label>
+              <select
+                value={filter.preferredFoot ?? ""}
+                onChange={(e) =>
+                  updateFilterField("preferredFoot", e.target.value || "")
+                }
+                disabled={hasNeedSelected}
+                className="bg-slate-950 border border-slate-700 rounded px-2 py-1 w-full"
+              >
+                <option value="">egal</option>
+                <option value="rechts">rechts</option>
+                <option value="links">links</option>
+                <option value="beide">beidfüßig</option>
+              </select>
+            </div>
+
+            {/* Traits (kommagetrennt) */}
+            <div className="space-y-1 md:col-span-2">
+              <label className="text-xs text-slate-400">
+                Benötigte Traits (kommagetrennt, optional)
+              </label>
+              <input
+                type="text"
+                value={(filter.requiredTraits ?? []).join(", ")}
+                onChange={(e) =>
+                  updateFilterField(
+                    "requiredTraits",
+                    e.target.value
+                      .split(",")
+                      .map((t) => t.trim())
+                      .filter(Boolean)
+                  )
+                }
+                disabled={hasNeedSelected}
+                className="bg-slate-950 border border-slate-700 rounded px-2 py-1 w-full"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Leihspieler-Option */}
         <div>
           <label className="flex items-center gap-2 text-slate-300">
             <input
               type="checkbox"
               checked={excludeLoans}
-              onChange={() => setExcludeLoans((v) => !v)}
+              onChange={() => setExcludeLoans((p) => !p)}
             />
             Leihspieler ausschließen
           </label>
         </div>
 
-        {/* League Selection */}
+        {/* Ligen auswählen */}
         <div>
-          <p className="text-sm text-slate-300">3. Ligen auswählen:</p>
+          <p className="text-sm text-slate-300">4. Ligen auswählen:</p>
 
           <div className="grid md:grid-cols-2 gap-4">
             {Object.entries(LEAGUES).map(([group, leagues]) => (
