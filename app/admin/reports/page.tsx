@@ -1,198 +1,75 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { collection, getDocs, doc, getDoc } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
-import type { ScoutingReport, Player } from "../../../lib/types";
+import { db } from "@/lib/firebase";
+import { collection, getDocs } from "firebase/firestore";
 
-export default function ReportsOverviewPage() {
-  const [reports, setReports] = useState<ScoutingReport[]>([]);
-  const [players, setPlayers] = useState<Record<string, Player>>({});
+export default function ReportsPage() {
+  const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [search, setSearch] = useState("");
-  const [filterCompetition, setFilterCompetition] = useState("");
-
-  // ----------------------------------------------
-  // Reports & Player-Daten laden
-  // ----------------------------------------------
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
+    const loadReports = async () => {
+      try {
+        const ref = collection(db, "playerReports");
+        const snap = await getDocs(ref);
 
-      // Reports laden
-      const rSnap = await getDocs(collection(db, "scoutingReports"));
-      const rList = rSnap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as ScoutingReport),
-      }));
+        const list = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }));
 
-      // Spieler laden (nur die relevanten)
-      const map: Record<string, Player> = {};
-
-      for (const report of rList) {
-        if (!map[report.playerId]) {
-          const pSnap = await getDoc(doc(db, "players", report.playerId));
-          if (pSnap.exists()) {
-            map[report.playerId] = {
-              id: pSnap.id,
-              ...(pSnap.data() as Player),
-            };
-          }
-        }
+        setReports(list);
+      } catch (err) {
+        console.error("Fehler beim Laden der Reports:", err);
+      } finally {
+        setLoading(false);
       }
-
-      setReports(rList);
-      setPlayers(map);
-      setLoading(false);
     };
 
-    load();
+    loadReports();
   }, []);
 
-  // ----------------------------------------------
-  // Filter / Suche
-  // ----------------------------------------------
-  const filteredReports = useMemo(() => {
-    let list = [...reports];
-
-    if (search.trim().length > 0) {
-      const s = search.toLowerCase();
-
-      list = list.filter((r) => {
-        const p = players[r.playerId];
-        const name = p ? p.name.toLowerCase() : "";
-        const comp = (r.competition || "").toLowerCase();
-        const author = r.createdByEmail.toLowerCase();
-        return (
-          name.includes(s) ||
-          comp.includes(s) ||
-          author.includes(s)
-        );
-      });
-    }
-
-    if (filterCompetition) {
-      list = list.filter(
-        (r) => (r.competition || "").toLowerCase() === filterCompetition.toLowerCase()
-      );
-    }
-
-    // Neueste zuerst
-    return list.sort((a, b) => b.createdAt - a.createdAt);
-  }, [reports, players, search, filterCompetition]);
-
-  // ----------------------------------------------
-
   if (loading) {
-    return <main className="p-6 text-slate-400">Berichte werden geladen…</main>;
+    return <div className="p-4 text-slate-400">Lade Reports…</div>;
   }
 
   return (
-    <main className="space-y-6">
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Scouting Reports</h1>
 
-      <h1 className="text-xl font-semibold">Scouting-Reports</h1>
-
-      {/* FILTER */}
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 space-y-3 text-sm">
-
-        {/* Suche */}
-        <div className="flex flex-col">
-          <label className="text-xs text-slate-400">Suche (Spieler, Autor, Wettbewerb)</label>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1 outline-none focus:border-emerald-400"
-            placeholder="z.B. Mbappé, Champions League, max@scout.com"
-          />
-        </div>
-
-        {/* Wettbewerb Filter */}
-        <div className="flex flex-col">
-          <label className="text-xs text-slate-400">Wettbewerb filtern</label>
-          <input
-            value={filterCompetition}
-            onChange={(e) => setFilterCompetition(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-1 outline-none focus:border-emerald-400"
-            placeholder="z.B. Bundesliga, U19, Testspiel"
-          />
-        </div>
-
-        <p className="text-xs text-slate-500">
-          {filteredReports.length} von {reports.length} Berichten
-        </p>
-      </section>
-
-      {/* LISTE */}
-      <section className="space-y-4">
-
-        {filteredReports.map((r) => {
-          const player = players[r.playerId];
-
-          return (
-            <div
-              key={r.id}
-              className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 hover:border-emerald-400/60 transition"
-            >
-
-              {/* Kopf */}
-              <div className="flex justify-between items-center">
-                <div>
-                  <h2 className="text-slate-100 font-semibold text-lg">
-                    {player ? player.name : "Unbekannter Spieler"}
-                  </h2>
-
-                  <p className="text-slate-400 text-xs">
-                    {player?.position} • {player?.club}
-                  </p>
+      <div className="grid gap-3">
+        {reports.map((report) => (
+          <Link
+            key={report.id}
+            href={`/admin/reports/${report.id}`}
+            className="border border-slate-700 bg-slate-900/60 rounded-xl p-4 hover:border-emerald-400 transition"
+          >
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="text-lg font-semibold">
+                  {report.playerName ?? "Unbekannter Spieler"}
                 </div>
 
-                <Link
-                  href={`/admin/reports/${r.id}`}
-                  className="text-emerald-400 text-sm hover:text-emerald-300"
-                >
-                  → Öffnen
-                </Link>
+                <div className="text-sm text-slate-400">
+                  {report.date ?? "Datum fehlt"}
+                </div>
+
+                <div className="text-xs text-slate-500 mt-1">
+                  {report.summary?.slice(0, 80) ?? "Keine Zusammenfassung"}…
+                </div>
               </div>
 
-              {/* META */}
-              <div className="mt-3 text-sm">
-
-                <p className="text-slate-300">
-                  ⭐ {r.rating} / 5 • {r.currentForm}
-                </p>
-
-                <p className="text-slate-400 text-xs mt-1">
-                  Wettbewerb: {r.competition || "—"}  
-                  {" • "}
-                  Datum:{" "}
-                  {r.matchDate
-                    ? new Date(r.matchDate).toLocaleDateString("de-DE")
-                    : "—"}
-                </p>
-
-                <p className="text-slate-500 text-xs">
-                  Autor: {r.createdByEmail}
-                </p>
-              </div>
-
-              {/* Kurznotizen */}
-              <p className="text-slate-300 text-sm mt-3 line-clamp-2">
-                {r.notes}
-              </p>
-
+              <div className="text-sm text-emerald-300">Öffnen →</div>
             </div>
-          );
-        })}
+          </Link>
+        ))}
+      </div>
 
-        {filteredReports.length === 0 && (
-          <p className="text-slate-500 text-sm">
-            Keine passenden Berichte gefunden.
-          </p>
-        )}
-
-      </section>
-    </main>
+      {reports.length === 0 && (
+        <div className="text-slate-500 text-sm">Keine Reports vorhanden.</div>
+      )}
+    </div>
   );
 }

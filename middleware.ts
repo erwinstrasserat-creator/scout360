@@ -2,26 +2,30 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 export function middleware(req: NextRequest) {
-  const path = req.nextUrl.pathname;
+  const { pathname } = req.nextUrl;
 
-  const protectedPaths = [
-    "/admin",
-    "/admin/players",
-    "/admin/clubs",
-    "/admin/users",
-    "/admin/reports",
-    "/admin/needs",
-  ];
-
-  // Nur wenn Pfad geschützt
-  if (protectedPaths.some((p) => path.startsWith(p))) {
-    const isLoggedIn = req.cookies.get("auth")?.value;
-
-    if (!isLoggedIn) {
-      return NextResponse.redirect(new URL("/login", req.url));
-    }
+  // Nur Admin-Routen schützen (alles unter /admin)
+  if (!pathname.startsWith("/admin")) {
+    return NextResponse.next();
   }
 
+  const auth = req.cookies.get("auth")?.value;
+  const role = req.cookies.get("role")?.value;
+
+  // Nicht eingeloggt → zum Login
+  if (!auth) {
+    const loginUrl = new URL("/login", req.url);
+    loginUrl.searchParams.set("from", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // Eingeloggt, aber keine Admin-Rolle → Startseite
+  if (role !== "admin") {
+    const homeUrl = new URL("/", req.url);
+    return NextResponse.redirect(homeUrl);
+  }
+
+  // Admin + eingeloggt → Zugriff erlaubt
   return NextResponse.next();
 }
 

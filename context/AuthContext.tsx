@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { auth, db } from "../lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
 import { doc, getDoc } from "firebase/firestore";
 
@@ -19,7 +19,7 @@ const AuthContext = createContext<AuthContextType>({
   logout: async () => {},
 });
 
-export function AuthProvider({ children }: any) {
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<any>(null);
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,21 +29,19 @@ export function AuthProvider({ children }: any) {
       setUser(firebaseUser);
 
       if (firebaseUser) {
-        // Rolle holen
-        const roleDoc = await getDoc(doc(db, "userRoles", firebaseUser.uid));
-        const userRole = roleDoc.exists()
-          ? roleDoc.data().role
-          : "none";
+        // Rolle laden
+        const snap = await getDoc(doc(db, "userRoles", firebaseUser.uid));
+        const userRole = snap.exists() ? snap.data().role : "none";
 
         setRole(userRole);
 
-        // 🔥 Cookie setzen (für Middleware)
+        // Cookies für protected middleware setzen
         document.cookie = `auth=true; path=/; max-age=86400; SameSite=Lax`;
         document.cookie = `role=${userRole}; path=/; max-age=86400; SameSite=Lax`;
-      } else {
-        setRole(null);
 
-        // 🔥 Cookies löschen
+      } else {
+        // Benutzer abgemeldet → Cookies löschen
+        setRole(null);
         document.cookie = "auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         document.cookie = "role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       }
@@ -55,10 +53,9 @@ export function AuthProvider({ children }: any) {
   }, []);
 
   const logout = async () => {
-    // Erst Firebase-Logout
     await signOut(auth);
 
-    // Dann Cookies löschen
+    // Cookies löschen
     document.cookie = "auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
     document.cookie = "role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   };

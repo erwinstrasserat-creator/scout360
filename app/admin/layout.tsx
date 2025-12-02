@@ -1,60 +1,83 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "../../context/AuthContext";
 import Link from "next/link";
+import { useAuth } from "@/context/AuthContext";
 
-export default function AdminLayout({ children }: { children: ReactNode }) {
-  const { user, role, loading } = useAuth() as any;
+export default function AdminLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const { user, role, loading } = useAuth();
   const router = useRouter();
 
-  // Admin Guard
   useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        router.push("/login");
-      } else if (role !== "admin") {
-        router.push("/");
-      }
+    if (loading) return;
+
+    // Kein Login → redirect zum Login
+    if (!user) {
+      router.push("/login");
+      return;
+    }
+
+    // Kein admin → redirect zur Startseite
+    if (role !== "admin") {
+      router.push("/");
+      return;
     }
   }, [user, role, loading, router]);
 
+  // Während Auth lädt oder Redirect ausgeführt wird
   if (loading || !user || role !== "admin") {
     return (
       <main className="p-6 text-sm text-slate-400">
-        Admin-Bereich wird geladen...
+        Admin-Bereich wird geladen…
       </main>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Admin Navigation */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 flex items-center justify-between">
+    <div className="space-y-6 p-6">
+
+      {/* 🌐 Admin Navigation */}
+      <nav className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Admin Bereich</h1>
 
-        <nav className="flex gap-4 text-sm">
+        <div className="flex gap-4 text-sm">
           <Link href="/admin" className="hover:text-emerald-400 transition">
             Dashboard
           </Link>
-          <Link href="/admin/seed" className="hover:text-emerald-400 transition">
-            Seed (Spieler laden)
+
+          <Link href="/admin/players" className="hover:text-emerald-400 transition">
+            Spieler
           </Link>
-          <Link href="/admin/clubs" className="hover:text-emerald-400 transition">
-            Vereine
+
+          <Link href="/admin/assign-player" className="hover:text-emerald-400 transition">
+            Zuordnung
           </Link>
+
           <Link href="/admin/needs" className="hover:text-emerald-400 transition">
             Bedarfslisten
           </Link>
+
+          <Link href="/admin/clubs" className="hover:text-emerald-400 transition">
+            Vereine
+          </Link>
+
+          <Link href="/admin/reports" className="hover:text-emerald-400 transition">
+            Reports
+          </Link>
+
           <Link href="/admin/users" className="hover:text-emerald-400 transition">
             Benutzerverwaltung
           </Link>
-        </nav>
-      </div>
+        </div>
+      </nav>
 
-      {/* Inhalt */}
-      <div>{children}</div>
+      {/* 📦 Inhalt */}
+      {children}
     </div>
   );
 }

@@ -1,93 +1,112 @@
 "use client";
 
-import { FormEvent, useState } from "react";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth, db } from "../../../../lib/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { db } from "@/lib/firebase";
+import {
+  doc,
+  setDoc,
+} from "firebase/firestore";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
 export default function NewUserPage() {
+  const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("reader");
+
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const router = useRouter();
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
+  const createUser = async () => {
     setError(null);
-    setSaving(true);
+
+    if (!email || !password) {
+      setError("E-Mail und Passwort dürfen nicht leer sein.");
+      return;
+    }
 
     try {
-      // Nutzer in Firebase Auth anlegen
-      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      setSaving(true);
 
-      // Rolle in Firestore speichern
-      await setDoc(doc(db, "userRoles", cred.user.uid), {
-        role,
+      // 1️⃣ Neuen User in Firebase Authentication erstellen
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = cred.user.uid;
+
+      // 2️⃣ User-Daten in Firestore speichern
+      await setDoc(doc(db, "users", uid), {
         email,
+        createdAt: Date.now(),
       });
 
+      // 3️⃣ Rolle in Firestore speichern
+      await setDoc(doc(db, "userRoles", uid), {
+        role,
+      });
+
+      alert("Benutzer erfolgreich erstellt.");
       router.push("/admin/users");
-    } catch (e: any) {
-      console.error(e);
-      setError(e.message || "Fehler beim Anlegen.");
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message ?? "Fehler beim Erstellen des Benutzers.");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <main className="max-w-sm space-y-4">
-      <h1 className="text-xl font-semibold">Neuen Benutzer einladen</h1>
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Neuen Benutzer anlegen</h1>
 
-      <form onSubmit={handleSubmit} className="space-y-3 text-sm">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-400">E-Mail</label>
+      <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-4">
+
+        <div>
+          <label className="text-sm text-slate-300">E-Mail</label>
           <input
-            required
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 outline-none focus:border-emerald-400"
+            className="w-full mt-1 rounded-lg bg-slate-950 border border-slate-700 px-2 py-2 focus:border-emerald-400 outline-none"
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-400">Passwort</label>
+        <div>
+          <label className="text-sm text-slate-300">Passwort</label>
           <input
-            required
             type="password"
             value={password}
-            minLength={6}
             onChange={(e) => setPassword(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 outline-none focus:border-emerald-400"
+            className="w-full mt-1 rounded-lg bg-slate-950 border border-slate-700 px-2 py-2 focus:border-emerald-400 outline-none"
           />
         </div>
 
-        <div className="flex flex-col gap-1">
-          <label className="text-xs text-slate-400">Rolle</label>
+        <div>
+          <label className="text-sm text-slate-300">Rolle</label>
+
           <select
             value={role}
             onChange={(e) => setRole(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1"
+            className="block w-full mt-1 rounded-lg bg-slate-950 border border-slate-700 px-2 py-2 focus:border-emerald-400 outline-none"
           >
-            <option value="admin">admin</option>
-            <option value="reader">reader</option>
+            <option value="reader">Reader</option>
+            <option value="admin">Admin</option>
+            <option value="none">Keine Rolle</option>
           </select>
         </div>
 
-        {error && <p className="text-xs text-red-400">{error}</p>}
+        {error && <p className="text-red-400 text-sm">{error}</p>}
 
         <button
-          type="submit"
+          onClick={createUser}
           disabled={saving}
-          className="w-full rounded-lg bg-emerald-500 py-2 text-sm font-semibold text-slate-950 hover:bg-emerald-400 disabled:opacity-60"
+          className="rounded-lg bg-emerald-500 px-4 py-2 text-slate-900 font-semibold hover:bg-emerald-400 disabled:opacity-50"
         >
-          {saving ? "Erstelle Benutzer..." : "Benutzer anlegen"}
+          {saving ? "Erstelle Benutzer…" : "Benutzer erstellen"}
         </button>
-      </form>
-    </main>
+      </div>
+    </div>
   );
 }

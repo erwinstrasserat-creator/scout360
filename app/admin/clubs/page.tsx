@@ -1,67 +1,69 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
-import { db } from "../../../lib/firebase";
-import type { Club } from "../../../lib/types";
 import Link from "next/link";
+import { db } from "@/lib/firebase";
+import { collection, getDocs } from "firebase/firestore";
 
 export default function ClubsAdminPage() {
-  const [clubs, setClubs] = useState<Club[]>([]);
+  const [clubs, setClubs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const load = async () => {
-      const snap = await getDocs(collection(db, "clubs"));
-      const list: Club[] = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as any),
-      }));
-      setClubs(list);
-      setLoading(false);
+    const loadClubs = async () => {
+      try {
+        const ref = collection(db, "clubs");
+        const snap = await getDocs(ref);
+
+        const list = snap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        }));
+
+        setClubs(list);
+      } catch (err) {
+        console.error("Fehler beim Laden der Clubs:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
-    load();
+    loadClubs();
   }, []);
 
+  if (loading) {
+    return <div className="p-4 text-slate-400">Lade Clubs…</div>;
+  }
+
   return (
-    <main className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Vereine</h1>
-        <Link
-          href="/admin/clubs/new"
-          className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-emerald-400"
-        >
-          + Neuer Verein
-        </Link>
-      </div>
+    <div className="p-6 space-y-6">
+      <h1 className="text-2xl font-bold">Vereine</h1>
 
-      {loading && (
-        <p className="text-sm text-slate-400">Lade Vereine...</p>
-      )}
-
-      <div className="space-y-3">
-        {clubs.map((c) => (
-          <div
-            key={c.id}
-            className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm"
+      <div className="grid gap-3">
+        {clubs.map((club) => (
+          <Link
+            key={club.id}
+            href={`/admin/clubs/${club.id}`}
+            className="border border-slate-700 bg-slate-900/60 rounded-xl p-4 hover:border-emerald-400 transition"
           >
-            <p className="font-semibold text-slate-100">{c.name}</p>
-            <p className="text-xs text-slate-400">
-              {c.country || "Land unbekannt"} • {c.level || "Level unbekannt"}
-            </p>
-            {c.notes && (
-              <p className="text-xs text-slate-400 mt-1">{c.notes}</p>
-            )}
-          </div>
-        ))}
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="font-bold text-lg">{club.name}</div>
 
-        {!loading && clubs.length === 0 && (
-          <p className="text-sm text-slate-500">
-            Noch keine Vereine angelegt.
-          </p>
-        )}
+                <div className="text-sm text-slate-400">
+                  {club.country ?? "Land unbekannt"}
+                </div>
+              </div>
+
+              <div className="text-sm text-emerald-300">Details →</div>
+            </div>
+          </Link>
+        ))}
       </div>
-    </main>
+
+      {clubs.length === 0 && (
+        <div className="text-slate-500 text-sm">Keine Clubs gefunden.</div>
+      )}
+    </div>
   );
 }
