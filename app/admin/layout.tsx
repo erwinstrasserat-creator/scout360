@@ -16,20 +16,17 @@ export default function AdminLayout({
   useEffect(() => {
     if (loading) return;
 
-    // Kein Login → redirect zum Login
     if (!user) {
       router.push("/login");
       return;
     }
 
-    // Kein admin → redirect zur Startseite
     if (role !== "admin") {
       router.push("/");
       return;
     }
   }, [user, role, loading, router]);
 
-  // Während Auth lädt oder Redirect ausgeführt wird
   if (loading || !user || role !== "admin") {
     return (
       <main className="p-6 text-sm text-slate-400">
@@ -40,8 +37,6 @@ export default function AdminLayout({
 
   return (
     <div className="space-y-6 p-6">
-
-      {/* 🌐 Admin Navigation */}
       <nav className="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Admin Bereich</h1>
 
@@ -54,10 +49,8 @@ export default function AdminLayout({
             Spieler
           </Link>
 
-          <Link href="/admin/assign-player" className="hover:text-emerald-400 transition">
-            Zuordnung
-          </Link>
-
+          {/* Zuordnung entfernt — Route existierte nicht */}
+          
           <Link href="/admin/needs" className="hover:text-emerald-400 transition">
             Bedarfslisten
           </Link>
@@ -76,7 +69,6 @@ export default function AdminLayout({
         </div>
       </nav>
 
-      {/* 📦 Inhalt */}
       {children}
     </div>
   );
