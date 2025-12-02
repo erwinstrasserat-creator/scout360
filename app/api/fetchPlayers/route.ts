@@ -5,6 +5,9 @@ export const runtime = "nodejs";
 
 const API_FOOTBALL_BASE = "https://v3.football.api-sports.io";
 
+/**
+ * Allgemeiner API-Football Fetch Wrapper
+ */
 async function apiFootballFetch(
   path: string,
   params: Record<string, string | number>
@@ -16,7 +19,9 @@ async function apiFootballFetch(
   }
 
   const url = new URL(API_FOOTBALL_BASE + path);
-  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)));
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, String(value));
+  }
 
   const res = await fetch(url.toString(), {
     headers: {
@@ -32,19 +37,49 @@ async function apiFootballFetch(
   return res.json();
 }
 
-// Kleiner Helper, um "180 cm" → 180 zu machen
-function parseHeightToCm(height: string | null | undefined): number | undefined {
-  if (!height) return undefined;
-  const num = parseInt(height);
-  return Number.isNaN(num) ? undefined : num;
+/**
+ * Höhe in cm parsen
+ */
+function parseHeightToCm(height: string | undefined | null): number | null {
+  if (!height) return null;
+  const parsed = parseInt(height);
+  return isNaN(parsed) ? null : parsed;
 }
 
+/**
+ * Leihstatus extrahieren aus player["transfers"]
+ */
+function extractLoanInfo(transfers: any[]): {
+  onLoan: boolean;
+  loanFrom: string | null;
+} {
+  if (!Array.isArray(transfers)) return { onLoan: false, loanFrom: null };
+
+  for (const t of transfers) {
+    if (t.type && typeof t.type === "string") {
+      if (t.type.toLowerCase().includes("loan")) {
+        return {
+          onLoan: true,
+          loanFrom: t.teams?.in?.name ?? null,
+        };
+      }
+    }
+  }
+
+  return { onLoan: false, loanFrom: null };
+}
+
+/**
+ * POST – Spieler importieren
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
     const season = Number(body.season) || 2025;
+
     const leagueIds: number[] = Array.isArray(body.leagueIds)
-      ? body.leagueIds.map((x: any) => Number(x)).filter((x) => !Number.isNaN(x))
+      ? body.leagueIds.map((n) => Number(n)).filter((n) => !isNaN(n))
       : [];
 
     if (!leagueIds.length) {
@@ -55,85 +90,101 @@ export async function POST(req: NextRequest) {
     }
 
     const allPlayers: any[] = [];
+    const playerCache = new Set<number>();
 
-    // 1) Für jede Liga → Teams holen
     for (const leagueId of leagueIds) {
+      // 1️⃣ TEAMS LADEN
       const teamsJson = await apiFootballFetch("/teams", {
         league: leagueId,
         season,
       });
 
-      const teams: any[] = Array.isArray(teamsJson.response)
+      const teams = Array.isArray(teamsJson.response)
         ? teamsJson.response
         : [];
 
-      const teamIds: number[] = teams
+      const teamIds = teams
         .map((t) => t.team?.id)
-        .filter((id): id is number => typeof id === "number");
+        .filter((id) => typeof id === "number");
 
-      // 2) Für jedes Team → Spieler holen
+      // 2️⃣ FÜR JEDE MANNSCHAFT → Spieler holen
       for (const teamId of teamIds) {
         let page = 1;
-        const maxPages = 5; // Safety-Limit
 
-        while (page <= maxPages) {
+        while (page <= 10) {
           const playersJson = await apiFootballFetch("/players", {
             team: teamId,
             season,
             page,
           });
 
-          const respArr: any[] = Array.isArray(playersJson.response)
+          const playersArr = Array.isArray(playersJson.response)
             ? playersJson.response
             : [];
 
-          if (!respArr.length) break;
+          if (!playersArr.length) break;
 
-          for (const r of respArr) {
-            const p = r.player;
-            const stat = Array.isArray(r.statistics) ? r.statistics[0] : null;
+          for (const item of playersArr) {
+            const p = item.player;
+            const stats = Array.isArray(item.statistics)
+              ? item.statistics[0]
+              : null;
 
-            const heightCm = parseHeightToCm(p.height);
-            const position = stat?.games?.position ?? null;
-            const leagueName = stat?.league?.name ?? null;
+            if (!p?.id) continue;
+            if (playerCache.has(p.id)) continue; // 🔥 Duplicate verhindern
+            playerCache.add(p.id);
+
+            // 🔍 Leihstatus extrahieren
+            const loan = extractLoanInfo(p.transfers ?? []);
 
             const playerObj = {
               apiId: p.id,
-              name: p.name,
+              name: p.name ?? null,
               age: p.age ?? null,
-              heightCm: heightCm ?? null,
-              position,
+              heightCm: parseHeightToCm(p.height),
+              position: stats?.games?.position ?? null,
               foot: p.preferred_foot ?? null,
-              league: leagueName,
-              club: stat?.team?.name ?? null,
-              // Stats kannst du später verfeinern – hier Platzhalter/Felder
+              league: stats?.league?.name ?? null,
+              club: stats?.team?.name ?? null,
+
+              // 🔥 Leihinfos
+              onLoan: loan.onLoan,
+              loanFrom: loan.loanFrom,
+
+              // Stats noch Platzhalter
               stats: {
-                offensiv: undefined,
-                defensiv: undefined,
-                intelligenz: undefined,
-                physis: undefined,
-                technik: undefined,
-                tempo: undefined,
+                offensiv: null,
+                defensiv: null,
+                intelligenz: null,
+                physis: null,
+                technik: null,
+                tempo: null,
               },
-              traits: [] as string[],
+
+              traits: [],
             };
 
             allPlayers.push(playerObj);
           }
 
-          // Pagination abbrechen, wenn weniger als 20/30 zurückkommen
-          if (!playersJson.paging || !playersJson.paging.total) break;
+          // Pagination prüfen
+          if (!playersJson.paging) break;
           if (page >= playersJson.paging.total) break;
+
           page++;
         }
       }
     }
 
-    return NextResponse.json(allPlayers);
-  } catch (err: any) {
-    console.error("fetchPlayers error:", err);
+    return NextResponse.json(allPlayers, { status: 200 });
+  } catch (error: any) {
+    console.error("❌ fetchPlayers error:", {
+      message: error?.message,
+      stack: error?.stack,
+    });
+
     return NextResponse.json(
-      { error: err?.message ?? "fetchPlayers failed" },
+      { error: "fetchPlayers failed", message: error?.message },
       { status: 500 }
     );
   }

@@ -10,23 +10,22 @@ import {
   setDoc,
 } from "firebase/firestore";
 
+/* ─────────────────────────────────────────
+   🔵 Typen
+─────────────────────────────────────────── */
+
 type Player = {
-  apiId?: number;
-  name?: string;
-  age?: number | null;
-  heightCm?: number | null;
-  position?: string | null;
-  foot?: string | null;
-  league?: string | null;
-  club?: string | null;
-  stats?: {
-    defensiv?: number;
-    intelligenz?: number;
-    offensiv?: number;
-    physis?: number;
-    technik?: number;
-    tempo?: number;
-  };
+  apiId: number;
+  name: string | null;
+  age: number | null;
+  heightCm: number | null;
+  position: string | null;
+  foot: string | null;
+  league: string | null;
+  club: string | null;
+  onLoan: boolean;
+  loanFrom: string | null;
+  stats?: any;
   traits?: string[];
 };
 
@@ -38,16 +37,9 @@ type NeedDoc = {
   heightMin?: number | null;
   heightMax?: number | null;
   preferredFoot?: string | null;
-  minStats?: {
-    defensiv?: number;
-    intelligenz?: number;
-    offensiv?: number;
-    physis?: number;
-    technik?: number;
-    tempo?: number;
-  } | null;
   requiredTraits?: string[] | null;
   leagues?: string[] | null;
+  minStats?: any | null;
 };
 
 type NeedFilter = {
@@ -57,31 +49,53 @@ type NeedFilter = {
   maxAge: number | null;
   preferredFoot: string | null;
   position: string | null;
-  minStats: {
-    defensiv?: number;
-    intelligenz?: number;
-    offensiv?: number;
-    physis?: number;
-    technik?: number;
-    tempo?: number;
-  } | null;
   requiredTraits: string[] | null;
+  minStats: any | null;
   leagues: string[] | null;
 };
 
-// Fixe Ligen-Konfiguration mit API-Football IDs
+/* ─────────────────────────────────────────
+   🔵 LIGEN (erweitert + korrekt API-Football IDs)
+─────────────────────────────────────────── */
+
 const LEAGUES = {
-  topEurope: [
+  england: [
     { id: 39, name: "Premier League" },
-    { id: 140, name: "La Liga" },
+    { id: 40, name: "Championship" },
+    { id: 41, name: "League One" },
+  ],
+  germany: [
     { id: 78, name: "Bundesliga" },
+    { id: 79, name: "2. Bundesliga" },
+    { id: 80, name: "3. Liga" },
+  ],
+  italy: [
     { id: 135, name: "Serie A" },
+    { id: 136, name: "Serie B" },
+    { id: 138, name: "Serie C" },
+  ],
+  spain: [
+    { id: 140, name: "La Liga" },
+    { id: 141, name: "Segunda División" },
+  ],
+  france: [
     { id: 61, name: "Ligue 1" },
+    { id: 62, name: "Ligue 2" },
+  ],
+  turkey: [
+    { id: 203, name: "Süper Lig" },
+    { id: 204, name: "TFF 1. Lig" },
   ],
   restEurope: [
-    { id: 94, name: "Primeira Liga (Portugal)" },
     { id: 88, name: "Eredivisie (Niederlande)" },
+    { id: 94, name: "Primeira Liga (Portugal)" },
     { id: 144, name: "Pro League (Belgien)" },
+    { id: 218, name: "Superliga (Dänemark)" },
+    { id: 87, name: "Superligaen (Schweden)" },
+    { id: 96, name: "Premiership (Schottland)" },
+    { id: 179, name: "Super League (Schweiz)" },
+    { id: 45, name: "Superliga (Serbien)" },
+    { id: 39, name: "Premier League" },
   ],
   asia: [
     { id: 98, name: "J-League (Japan)" },
@@ -96,12 +110,17 @@ const LEAGUES = {
 
 const SEASONS = [2023, 2024, 2025, 2026];
 
+/* ─────────────────────────────────────────
+   🔵 COMPONENT
+─────────────────────────────────────────── */
+
 export default function AdminSeedPage() {
   const [needs, setNeeds] = useState<NeedDoc[]>([]);
-  const [selectedNeedId, setSelectedNeedId] = useState<string>("");
+  const [selectedNeedId, setSelectedNeedId] = useState("");
 
-  const [season, setSeason] = useState<number>(2025); // Default 2025
+  const [season, setSeason] = useState(2025);
   const [selectedLeagueIds, setSelectedLeagueIds] = useState<number[]>([]);
+  const [excludeLoans, setExcludeLoans] = useState(false);
 
   const [filter, setFilter] = useState<NeedFilter>({
     heightMin: null,
@@ -110,140 +129,89 @@ export default function AdminSeedPage() {
     maxAge: null,
     preferredFoot: null,
     position: null,
-    minStats: null,
     requiredTraits: null,
+    minStats: null,
     leagues: null,
   });
 
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Needs laden
+  /* ─────────────────────────────────────────
+     Needs laden
+  ────────────────────────────────────────── */
   useEffect(() => {
-    const loadNeeds = async () => {
+    const load = async () => {
       const snap = await getDocs(collection(db, "needs"));
-      const list: NeedDoc[] = snap.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as any),
-      }));
-      setNeeds(list);
+      setNeeds(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
     };
-
-    loadNeeds();
+    load();
   }, []);
 
-  // Need als Filter übernehmen
-  const applyNeedAsFilter = (needId: string) => {
-    setSelectedNeedId(needId);
-
-    const nd = needs.find((n) => n.id === needId);
+  /* ─────────────────────────────────────────
+     Need übernehmen
+  ────────────────────────────────────────── */
+  const applyNeed = (id: string) => {
+    setSelectedNeedId(id);
+    const nd = needs.find((n) => n.id === id);
     if (!nd) return;
 
-    const newFilter: NeedFilter = {
+    setFilter({
       heightMin: nd.heightMin ?? null,
       heightMax: nd.heightMax ?? null,
       minAge: nd.minAge ?? null,
       maxAge: nd.maxAge ?? null,
       preferredFoot: nd.preferredFoot ?? null,
       position: nd.position ?? null,
-      minStats: nd.minStats ?? null,
       requiredTraits: nd.requiredTraits ?? null,
       leagues: nd.leagues ?? null,
-    };
+      minStats: nd.minStats ?? null,
+    });
 
-    setFilter(newFilter);
     setStatus("Filter aus Need übernommen.");
   };
 
+  /* ─────────────────────────────────────────
+     Ligen togglen
+  ────────────────────────────────────────── */
   const toggleLeague = (id: number) => {
     setSelectedLeagueIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((n) => n !== id) : [...prev, id]
     );
   };
 
-  // Prüfen, ob Spieler zum Filter passt
+  /* ─────────────────────────────────────────
+     Filter für Spieler
+  ────────────────────────────────────────── */
   const matchesFilter = (p: Player): boolean => {
-    // Alter
+    if (excludeLoans && p.onLoan) return false;
+
     if (filter.minAge !== null && (p.age ?? 0) < filter.minAge) return false;
     if (filter.maxAge !== null && (p.age ?? 0) > filter.maxAge) return false;
 
-    // Größe
     if (filter.heightMin !== null && (p.heightCm ?? 0) < filter.heightMin)
       return false;
     if (filter.heightMax !== null && (p.heightCm ?? 0) > filter.heightMax)
       return false;
 
-    // Position (sehr grob – hier könntest du später Mapping machen)
-    if (
-      filter.position &&
-      p.position &&
-      filter.position.trim() !== "" &&
-      !p.position.toLowerCase().includes(filter.position.toLowerCase())
-    ) {
-      return false;
-    }
-
-    // Bevorzugter Fuß
-    if (
-      filter.preferredFoot &&
-      filter.preferredFoot.toLowerCase() !== "egal" &&
-      p.foot &&
-      p.foot.toLowerCase() !== filter.preferredFoot.toLowerCase()
-    ) {
-      return false;
-    }
-
-    // Ligen aus Need (falls gesetzt)
-    if (filter.leagues && filter.leagues.length > 0) {
-      if (!p.league || !filter.leagues.includes(p.league)) return false;
-    }
-
-    // Stats – nur wenn sowohl Filter als auch Player stats haben
-    if (filter.minStats && p.stats) {
-      const keys = Object.keys(filter.minStats) as (keyof Player["stats"])[];
-      for (const key of keys) {
-        const minValue = filter.minStats[key];
-        if (typeof minValue === "number") {
-          const playerValue = p.stats?.[key] ?? 0;
-          if (playerValue < minValue) return false;
-        }
-      }
-    }
-
-    // Traits
-    if (
-      filter.requiredTraits &&
-      filter.requiredTraits.length > 0 &&
-      (!p.traits || p.traits.length === 0)
-    ) {
-      return false;
-    }
-
-    if (
-      filter.requiredTraits &&
-      filter.requiredTraits.length > 0 &&
-      p.traits &&
-      p.traits.length > 0
-    ) {
-      const playerTraitsLower = p.traits.map((t) => t.toLowerCase());
-      for (const t of filter.requiredTraits) {
-        if (!playerTraitsLower.includes(t.toLowerCase())) {
-          return false;
-        }
-      }
+    if (filter.position) {
+      if (!p.position?.toLowerCase().includes(filter.position.toLowerCase()))
+        return false;
     }
 
     return true;
   };
 
+  /* ─────────────────────────────────────────
+     Import aus API
+  ────────────────────────────────────────── */
   const importFromApi = async () => {
     if (!selectedLeagueIds.length) {
-      setStatus("❌ Bitte mindestens eine Liga auswählen.");
-      return;
+      return setStatus("❌ Bitte mindestens eine Liga auswählen.");
     }
 
     setLoading(true);
-    setStatus("⏳ Lade Spieler aus API-Football…");
+    setStatus("⏳ Lade Spieler…");
 
     try {
       const res = await fetch("/api/fetchPlayers", {
@@ -251,194 +219,148 @@ export default function AdminSeedPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           season,
-          // 🔥 WICHTIG: Name muss leagueIds heißen, wie in deiner API
-          leagueIds: selectedLeagueIds.map((id) => Number(id)),
+          leagueIds: selectedLeagueIds,
         }),
       });
 
       if (!res.ok) {
-        const text = await res.text();
-        console.error("fetchPlayers error:", text);
-        setStatus("❌ Fehler beim Abrufen der Spieler.");
+        console.error(await res.text());
+        setStatus("❌ Fehler beim Abrufen.");
         setLoading(false);
         return;
       }
 
-      const players: Player[] = await res.json();
-      const filtered = players.filter(matchesFilter);
+      const allPlayers: Player[] = await res.json();
+      const filtered = allPlayers.filter(matchesFilter);
 
       setStatus(
-        `⏳ Importiere ${filtered.length} von ${players.length} geladenen Spielern…`
+        `⏳ Importiere ${filtered.length} von ${allPlayers.length} Spielern…`
       );
 
       for (const p of filtered) {
         await setDoc(doc(collection(db, "players")), p);
       }
 
-      setStatus(
-        `✔️ Import abgeschlossen: ${filtered.length} Spieler gespeichert.`
-      );
+      setStatus(`✔️ Import abgeschlossen (${filtered.length} gespeichert).`);
     } catch (err) {
       console.error(err);
-      setStatus("❌ Unerwarteter Fehler beim Import.");
-    } finally {
-      setLoading(false);
+      setStatus("❌ Fehler beim Import.");
     }
+
+    setLoading(false);
   };
 
+  /* ─────────────────────────────────────────
+     Datenbank löschen
+  ────────────────────────────────────────── */
   const clearDatabase = async () => {
-    if (!confirm("Sicher, dass du ALLE Spieler löschen möchtest?")) return;
+    if (!confirm("Alle Spieler löschen?")) return;
 
     setStatus("⏳ Lösche Spieler…");
 
     const snap = await getDocs(collection(db, "players"));
-    for (const d of snap.docs) {
-      await deleteDoc(d.ref);
-    }
+    for (const d of snap.docs) await deleteDoc(d.ref);
 
     setStatus("✔️ Datenbank geleert.");
   };
 
+  /* ─────────────────────────────────────────
+     UI
+  ────────────────────────────────────────── */
   return (
     <div className="space-y-6 p-6">
       <h2 className="text-lg font-semibold">Spieler Import (Seed)</h2>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-6">
-        {/* Need Auswahl */}
-        <div className="space-y-2">
-          <p className="text-sm text-slate-300">
-            1. Wähle eine Need als Filter:
-          </p>
+      <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 space-y-6">
+        {/* Need */}
+        <div>
+          <p className="text-sm text-slate-300">1. Need wählen:</p>
           <select
             value={selectedNeedId}
-            onChange={(e) => applyNeedAsFilter(e.target.value)}
+            onChange={(e) => applyNeed(e.target.value)}
             className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full"
           >
-            <option value="">Keine Need (nur Liga/Season)</option>
+            <option value="">Keine Need</option>
             {needs.map((n) => (
               <option key={n.id} value={n.id}>
-                {n.position ?? "Ohne Position"} – Alter{" "}
-                {n.minAge ?? "?"}-{n.maxAge ?? "?"}
+                {n.position ?? "Position"} – Alter {n.minAge ?? "?"}-
+                {n.maxAge ?? "?"}
               </option>
             ))}
           </select>
         </div>
 
         {/* Season */}
-        <div className="space-y-2">
-          <p className="text-sm text-slate-300">
-            2. Saison auswählen (Season):
-          </p>
+        <div>
+          <p className="text-sm text-slate-300">2. Saison:</p>
           <select
             value={season}
             onChange={(e) => setSeason(Number(e.target.value))}
             className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full"
           >
             {SEASONS.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
+              <option key={s}>{s}</option>
             ))}
           </select>
         </div>
 
-        {/* Ligen Auswahl */}
-        <div className="space-y-3">
-          <p className="text-sm text-slate-300">
-            3. Ligen auswählen (Multi-Select):
-          </p>
+        {/* Leihspieler */}
+        <div>
+          <label className="flex items-center gap-2 text-slate-300">
+            <input
+              type="checkbox"
+              checked={excludeLoans}
+              onChange={() => setExcludeLoans((p) => !p)}
+            />
+            Leihspieler ausschließen
+          </label>
+        </div>
 
-          <div className="grid md:grid-cols-2 gap-4 text-sm">
-            {/* Top Europa */}
-            <div className="border border-slate-800 rounded-lg p-3">
-              <div className="font-semibold mb-2">Top-Ligen Europa</div>
-              {LEAGUES.topEurope.map((lg) => (
-                <label
-                  key={lg.id}
-                  className="flex items-center gap-2 text-slate-300"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedLeagueIds.includes(lg.id)}
-                    onChange={() => toggleLeague(lg.id)}
-                  />
-                  {lg.name}
-                </label>
-              ))}
-            </div>
+        {/* League selection */}
+        <div>
+          <p className="text-sm text-slate-300">3. Ligen auswählen:</p>
 
-            {/* Rest Europa */}
-            <div className="border border-slate-800 rounded-lg p-3">
-              <div className="font-semibold mb-2">Rest Europa</div>
-              {LEAGUES.restEurope.map((lg) => (
-                <label
-                  key={lg.id}
-                  className="flex items-center gap-2 text-slate-300"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedLeagueIds.includes(lg.id)}
-                    onChange={() => toggleLeague(lg.id)}
-                  />
-                  {lg.name}
-                </label>
-              ))}
-            </div>
-
-            {/* Asien */}
-            <div className="border border-slate-800 rounded-lg p-3">
-              <div className="font-semibold mb-2">Asien (Japan / Korea)</div>
-              {LEAGUES.asia.map((lg) => (
-                <label
-                  key={lg.id}
-                  className="flex items-center gap-2 text-slate-300"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedLeagueIds.includes(lg.id)}
-                    onChange={() => toggleLeague(lg.id)}
-                  />
-                  {lg.name}
-                </label>
-              ))}
-            </div>
-
-            {/* Afrika */}
-            <div className="border border-slate-800 rounded-lg p-3">
-              <div className="font-semibold mb-2">Afrika</div>
-              {LEAGUES.africa.map((lg) => (
-                <label
-                  key={lg.id}
-                  className="flex items-center gap-2 text-slate-300"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selectedLeagueIds.includes(lg.id)}
-                    onChange={() => toggleLeague(lg.id)}
-                  />
-                  {lg.name}
-                </label>
-              ))}
-            </div>
+          <div className="grid md:grid-cols-2 gap-4">
+            {Object.entries(LEAGUES).map(([group, leagues]) => (
+              <div
+                key={group}
+                className="border border-slate-800 rounded-lg p-3"
+              >
+                <div className="font-semibold mb-2 capitalize">{group}</div>
+                {leagues.map((lg) => (
+                  <label
+                    key={lg.id}
+                    className="flex items-center gap-2 text-slate-300"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedLeagueIds.includes(lg.id)}
+                      onChange={() => toggleLeague(lg.id)}
+                    />
+                    {lg.name}
+                  </label>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
 
         {/* Status */}
-        {status && <div className="text-sm text-emerald-400">{status}</div>}
+        {status && <div className="text-emerald-400 text-sm">{status}</div>}
 
         {/* Buttons */}
         <div className="flex gap-4">
           <button
             onClick={importFromApi}
             disabled={loading}
-            className="rounded-lg bg-emerald-500 px-4 py-2 text-slate-900 font-semibold hover:bg-emerald-400 disabled:opacity-60"
+            className="bg-emerald-500 hover:bg-emerald-400 px-4 py-2 rounded font-semibold text-slate-900 disabled:opacity-50"
           >
-            {loading ? "Import läuft…" : "Spieler laden & importieren"}
+            {loading ? "Importiere…" : "Spieler importieren"}
           </button>
 
           <button
             onClick={clearDatabase}
-            className="rounded-lg bg-red-500 px-4 py-2 text-slate-900 font-semibold hover:bg-red-400"
+            className="bg-red-500 hover:bg-red-400 px-4 py-2 rounded font-semibold text-slate-900"
           >
             Datenbank leeren
           </button>
