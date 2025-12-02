@@ -10,9 +10,9 @@ import {
   setDoc,
 } from "firebase/firestore";
 
-/* ─────────────────────────────────────────
-   🔵 Typen
-─────────────────────────────────────────── */
+/* ---------------------------------------------------------
+   🔵 TYPE DEFINITIONS
+--------------------------------------------------------- */
 
 type Player = {
   apiId: number;
@@ -31,15 +31,15 @@ type Player = {
 
 type NeedDoc = {
   id: string;
-  position?: string;
-  minAge?: number | null;
-  maxAge?: number | null;
-  heightMin?: number | null;
-  heightMax?: number | null;
-  preferredFoot?: string | null;
-  requiredTraits?: string[] | null;
-  leagues?: string[] | null;
-  minStats?: any | null;
+  position: string | null;
+  minAge: number | null;
+  maxAge: number | null;
+  heightMin: number | null;
+  heightMax: number | null;
+  preferredFoot: string | null;
+  requiredTraits: string[];
+  leagues: string[];
+  minStats: any | null;
 };
 
 type NeedFilter = {
@@ -49,14 +49,14 @@ type NeedFilter = {
   maxAge: number | null;
   preferredFoot: string | null;
   position: string | null;
-  requiredTraits: string[] | null;
+  requiredTraits: string[];
   minStats: any | null;
-  leagues: string[] | null;
+  leagues: string[];
 };
 
-/* ─────────────────────────────────────────
-   🔵 LIGEN (erweitert + korrekt API-Football IDs)
-─────────────────────────────────────────── */
+/* ---------------------------------------------------------
+   🔵 LEAGUES (Extended)
+--------------------------------------------------------- */
 
 const LEAGUES = {
   england: [
@@ -95,7 +95,6 @@ const LEAGUES = {
     { id: 96, name: "Premiership (Schottland)" },
     { id: 179, name: "Super League (Schweiz)" },
     { id: 45, name: "Superliga (Serbien)" },
-    { id: 39, name: "Premier League" },
   ],
   asia: [
     { id: 98, name: "J-League (Japan)" },
@@ -110,9 +109,9 @@ const LEAGUES = {
 
 const SEASONS = [2023, 2024, 2025, 2026];
 
-/* ─────────────────────────────────────────
+/* ---------------------------------------------------------
    🔵 COMPONENT
-─────────────────────────────────────────── */
+--------------------------------------------------------- */
 
 export default function AdminSeedPage() {
   const [needs, setNeeds] = useState<NeedDoc[]>([]);
@@ -129,60 +128,85 @@ export default function AdminSeedPage() {
     maxAge: null,
     preferredFoot: null,
     position: null,
-    requiredTraits: null,
+    requiredTraits: [],
     minStats: null,
-    leagues: null,
+    leagues: [],
   });
 
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  /* ─────────────────────────────────────────
-     Needs laden
-  ────────────────────────────────────────── */
+  /* ---------------------------------------------------------
+     🔵 Load Needs (with automatic normalization)
+  --------------------------------------------------------- */
   useEffect(() => {
-    const load = async () => {
+    const loadNeeds = async () => {
       const snap = await getDocs(collection(db, "needs"));
-      setNeeds(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+
+      const cleaned = snap.docs.map((d) => {
+        const n = d.data() as any;
+
+        return {
+          id: d.id,
+          position: n.position ?? null,
+          minAge: n.minAge ?? null,
+          maxAge: n.maxAge ?? null,
+          heightMin: n.heightMin ?? null,
+          heightMax: n.heightMax ?? null,
+          preferredFoot: n.preferredFoot ?? null,
+
+          requiredTraits: Array.isArray(n.requiredTraits)
+            ? n.requiredTraits
+            : [],
+
+          leagues: Array.isArray(n.leagues) ? n.leagues : [],
+
+          minStats:
+            n.minStats && typeof n.minStats === "object" ? n.minStats : null,
+        } as NeedDoc;
+      });
+
+      setNeeds(cleaned);
     };
-    load();
+
+    loadNeeds();
   }, []);
 
-  /* ─────────────────────────────────────────
-     Need übernehmen
-  ────────────────────────────────────────── */
+  /* ---------------------------------------------------------
+     🔵 Apply Need To Filter
+  --------------------------------------------------------- */
   const applyNeed = (id: string) => {
     setSelectedNeedId(id);
     const nd = needs.find((n) => n.id === id);
     if (!nd) return;
 
     setFilter({
-      heightMin: nd.heightMin ?? null,
-      heightMax: nd.heightMax ?? null,
-      minAge: nd.minAge ?? null,
-      maxAge: nd.maxAge ?? null,
-      preferredFoot: nd.preferredFoot ?? null,
-      position: nd.position ?? null,
-      requiredTraits: nd.requiredTraits ?? null,
-      leagues: nd.leagues ?? null,
-      minStats: nd.minStats ?? null,
+      heightMin: nd.heightMin,
+      heightMax: nd.heightMax,
+      minAge: nd.minAge,
+      maxAge: nd.maxAge,
+      preferredFoot: nd.preferredFoot,
+      position: nd.position,
+      requiredTraits: nd.requiredTraits,
+      minStats: nd.minStats,
+      leagues: nd.leagues,
     });
 
     setStatus("Filter aus Need übernommen.");
   };
 
-  /* ─────────────────────────────────────────
-     Ligen togglen
-  ────────────────────────────────────────── */
+  /* ---------------------------------------------------------
+     🔵 Toggle League
+  --------------------------------------------------------- */
   const toggleLeague = (id: number) => {
     setSelectedLeagueIds((prev) =>
-      prev.includes(id) ? prev.filter((n) => n !== id) : [...prev, id]
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   };
 
-  /* ─────────────────────────────────────────
-     Filter für Spieler
-  ────────────────────────────────────────── */
+  /* ---------------------------------------------------------
+     🔵 Filter Logic
+  --------------------------------------------------------- */
   const matchesFilter = (p: Player): boolean => {
     if (excludeLoans && p.onLoan) return false;
 
@@ -202,13 +226,12 @@ export default function AdminSeedPage() {
     return true;
   };
 
-  /* ─────────────────────────────────────────
-     Import aus API
-  ────────────────────────────────────────── */
+  /* ---------------------------------------------------------
+     🔵 Import From API
+  --------------------------------------------------------- */
   const importFromApi = async () => {
-    if (!selectedLeagueIds.length) {
+    if (!selectedLeagueIds.length)
       return setStatus("❌ Bitte mindestens eine Liga auswählen.");
-    }
 
     setLoading(true);
     setStatus("⏳ Lade Spieler…");
@@ -250,9 +273,9 @@ export default function AdminSeedPage() {
     setLoading(false);
   };
 
-  /* ─────────────────────────────────────────
-     Datenbank löschen
-  ────────────────────────────────────────── */
+  /* ---------------------------------------------------------
+     🔵 Delete database
+  --------------------------------------------------------- */
   const clearDatabase = async () => {
     if (!confirm("Alle Spieler löschen?")) return;
 
@@ -264,15 +287,15 @@ export default function AdminSeedPage() {
     setStatus("✔️ Datenbank geleert.");
   };
 
-  /* ─────────────────────────────────────────
-     UI
-  ────────────────────────────────────────── */
+  /* ---------------------------------------------------------
+     🔵 UI
+  --------------------------------------------------------- */
   return (
     <div className="space-y-6 p-6">
       <h2 className="text-lg font-semibold">Spieler Import (Seed)</h2>
 
       <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 space-y-6">
-        {/* Need */}
+        {/* NEED Auswahl */}
         <div>
           <p className="text-sm text-slate-300">1. Need wählen:</p>
           <select
@@ -304,19 +327,19 @@ export default function AdminSeedPage() {
           </select>
         </div>
 
-        {/* Leihspieler */}
+        {/* Loan checkbox */}
         <div>
           <label className="flex items-center gap-2 text-slate-300">
             <input
               type="checkbox"
               checked={excludeLoans}
-              onChange={() => setExcludeLoans((p) => !p)}
+              onChange={() => setExcludeLoans((v) => !v)}
             />
             Leihspieler ausschließen
           </label>
         </div>
 
-        {/* League selection */}
+        {/* League Selection */}
         <div>
           <p className="text-sm text-slate-300">3. Ligen auswählen:</p>
 
