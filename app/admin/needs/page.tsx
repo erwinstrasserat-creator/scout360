@@ -8,7 +8,6 @@ import { collection, getDocs } from "firebase/firestore";
 export default function NeedsPage() {
   const [needs, setNeeds] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const loadNeeds = async () => {
@@ -22,9 +21,6 @@ export default function NeedsPage() {
         }));
 
         setNeeds(list);
-      } catch (err) {
-        console.error("Fehler beim Laden der Needs:", err);
-        setError("Fehler beim Laden der Bedarfslisten.");
       } finally {
         setLoading(false);
       }
@@ -33,17 +29,27 @@ export default function NeedsPage() {
     loadNeeds();
   }, []);
 
-  if (loading) {
-    return <div className="p-4 text-slate-400">Needs werden geladen…</div>;
-  }
-
-  if (error) {
-    return <div className="p-4 text-red-400">{error}</div>;
-  }
-
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Club Needs</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Club Needs</h1>
+
+        {/* Button neue Need */}
+        <Link
+          href="/admin/needs/new"
+          className="rounded-lg bg-emerald-500 text-slate-900 px-4 py-2 font-semibold hover:bg-emerald-400 transition"
+        >
+          + Neue Need
+        </Link>
+      </div>
+
+      {loading && (
+        <div className="p-4 text-slate-400">Needs werden geladen…</div>
+      )}
+
+      {!loading && needs.length === 0 && (
+        <div className="text-slate-500 text-sm">Keine Bedarfsliste vorhanden.</div>
+      )}
 
       <div className="grid gap-3">
         {needs.map((n) => (
@@ -63,27 +69,18 @@ export default function NeedsPage() {
                   {n.heightMin ?? "-"} – {n.heightMax ?? "-"} cm
                 </div>
 
-                {Array.isArray(n.requiredTraits) &&
-                  n.requiredTraits.length > 0 && (
-                    <div className="text-xs text-slate-500 mt-1">
-                      Traits: {n.requiredTraits.join(", ")}
-                    </div>
-                  )}
+                {n.requiredTraits && n.requiredTraits.length > 0 && (
+                  <div className="text-xs text-slate-500 mt-1">
+                    Traits: {n.requiredTraits.join(", ")}
+                  </div>
+                )}
               </div>
 
-              <div className="text-sm text-emerald-300">
-                Bearbeiten →
-              </div>
+              <div className="text-sm text-emerald-300">Bearbeiten →</div>
             </div>
           </Link>
         ))}
       </div>
-
-      {needs.length === 0 && (
-        <div className="text-slate-500 text-sm">
-          Keine Bedarfslisten vorhanden.
-        </div>
-      )}
     </div>
   );
 }

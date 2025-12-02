@@ -1,191 +1,232 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
-import {
-  doc,
-  getDoc,
-  updateDoc,
-  deleteDoc,
-} from "firebase/firestore";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 
-export default function EditNeedPage() {
-  const router = useRouter();
-  const params = useParams();
-  const id = params?.id as string;
+const STAT_KEYS = [
+  "defensiv",
+  "intelligenz",
+  "offensiv",
+  "physis",
+  "technik",
+  "tempo",
+];
 
+export default function EditNeedPage({ params }: { params: { id: string } }) {
   const [need, setNeed] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const [allLeagues, setAllLeagues] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // Need laden
   useEffect(() => {
-    if (!id) return;
+    const load = async () => {
+      const ref = doc(db, "needs", params.id);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        const data = snap.data();
 
-    const loadNeed = async () => {
-      try {
-        const ref = doc(db, "needs", id);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          setNeed(snap.data());
-        }
-      } finally {
-        setLoading(false);
+        // Falls League-Feld fehlt
+        if (!data.leagues) data.leagues = [];
+
+        setNeed(data);
+
+        // Falls Traits/Stats fehlen
+        if (!data.minStats) data.minStats = {};
+        if (!data.requiredTraits) data.requiredTraits = [];
       }
     };
 
-    loadNeed();
-  }, [id]);
+    load();
+  }, [params.id]);
 
-  const updateNeed = async () => {
-    if (!need) return;
+  // Ligen global laden → aus Players extrahieren
+  useEffect(() => {
+    const loadLeagues = async () => {
+      try {
+        const snap = await fetch("/api/players").then((r) => r.json());
 
-    try {
-      setSaving(true);
-      const ref = doc(db, "needs", id);
-      await updateDoc(ref, need);
-      router.push("/admin/needs");
-    } catch (e) {
-      console.error("Update error:", e);
-    } finally {
-      setSaving(false);
-    }
-  };
+        const leagues = Array.from(
+          new Set(snap.map((p: any) => p.league).filter(Boolean))
+        ).sort();
 
-  const removeNeed = async () => {
-    if (!confirm("Need wirklich löschen?")) return;
-
-    try {
-      await deleteDoc(doc(db, "needs", id));
-      router.push("/admin/needs");
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  if (loading) {
-    return <div className="p-4">Lade Need…</div>;
-  }
+        setAllLeagues(leagues);
+      } catch {}
+    };
+    loadLeagues();
+  }, []);
 
   if (!need) {
-    return <div className="p-4">Need nicht gefunden.</div>;
+    return <div className="p-6">Need wird geladen…</div>;
   }
 
+  // Need speichern
+  const saveNeed = async () => {
+    setSaving(true);
+    await updateDoc(doc(db, "needs", params.id), need);
+    setSaving(false);
+    alert("Need gespeichert!");
+  };
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-bold">Need bearbeiten</h1>
+    <div className="space-y-6 p-6">
+      <h1 className="text-2xl font-semibold">Need bearbeiten</h1>
 
-      <div className="space-y-4">
-        <label className="block">
-          <span className="text-sm text-slate-300">Position</span>
-          <input
-            className="w-full rounded-md bg-slate-900 border border-slate-700 p-2"
-            value={need.position ?? ""}
-            onChange={(e) => setNeed({ ...need, position: e.target.value })}
-          />
-        </label>
+      {/* Position */}
+      <div className="space-y-1">
+        <label className="text-sm text-slate-400">Position</label>
+        <input
+          value={need.position || ""}
+          onChange={(e) => setNeed({ ...need, position: e.target.value })}
+          className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
+        />
+      </div>
 
-        <label className="block">
-          <span className="text-sm text-slate-300">Preferred Foot</span>
-          <input
-            className="w-full rounded-md bg-slate-900 border border-slate-700 p-2"
-            value={need.preferredFoot ?? ""}
-            onChange={(e) => setNeed({ ...need, preferredFoot: e.target.value })}
-          />
-        </label>
-
-        <label className="block">
-          <span className="text-sm text-slate-300">Min Age</span>
+      {/* Age */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-sm text-slate-400">Alter min</label>
           <input
             type="number"
-            className="w-full rounded-md bg-slate-900 border border-slate-700 p-2"
-            value={need.minAge ?? ""}
+            value={need.minAge || ""}
             onChange={(e) =>
               setNeed({ ...need, minAge: Number(e.target.value) })
             }
+            className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
           />
-        </label>
+        </div>
 
-        <label className="block">
-          <span className="text-sm text-slate-300">Max Age</span>
+        <div>
+          <label className="text-sm text-slate-400">Alter max</label>
           <input
             type="number"
-            className="w-full rounded-md bg-slate-900 border border-slate-700 p-2"
-            value={need.maxAge ?? ""}
+            value={need.maxAge || ""}
             onChange={(e) =>
               setNeed({ ...need, maxAge: Number(e.target.value) })
             }
+            className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
           />
-        </label>
+        </div>
+      </div>
 
-        <label className="block">
-          <span className="text-sm text-slate-300">Height Min</span>
+      {/* Height */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-sm text-slate-400">Größe min (cm)</label>
           <input
             type="number"
-            className="w-full rounded-md bg-slate-900 border border-slate-700 p-2"
-            value={need.heightMin ?? ""}
+            value={need.heightMin || ""}
             onChange={(e) =>
               setNeed({ ...need, heightMin: Number(e.target.value) })
             }
+            className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
           />
-        </label>
+        </div>
 
-        <label className="block">
-          <span className="text-sm text-slate-300">Height Max</span>
+        <div>
+          <label className="text-sm text-slate-400">Größe max (cm)</label>
           <input
             type="number"
-            className="w-full rounded-md bg-slate-900 border border-slate-700 p-2"
-            value={need.heightMax ?? ""}
+            value={need.heightMax || ""}
             onChange={(e) =>
               setNeed({ ...need, heightMax: Number(e.target.value) })
             }
+            className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
           />
-        </label>
-
-        <label className="block">
-          <span className="text-sm text-slate-300">Traits (Kommagetrennt)</span>
-          <input
-            className="w-full rounded-md bg-slate-900 border border-slate-700 p-2"
-            value={(need.requiredTraits ?? []).join(", ")}
-            onChange={(e) =>
-              setNeed({
-                ...need,
-                requiredTraits: e.target.value
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter((s) => s.length > 0),
-              })
-            }
-          />
-        </label>
-
-        <label className="block">
-          <span className="text-sm text-slate-300">Tolerance</span>
-          <input
-            type="number"
-            className="w-full rounded-md bg-slate-900 border border-slate-700 p-2"
-            value={need.tolerance ?? 0}
-            onChange={(e) =>
-              setNeed({ ...need, tolerance: Number(e.target.value) })
-            }
-          />
-        </label>
-
-        <button
-          className="px-4 py-2 bg-emerald-500 text-slate-900 rounded-md font-bold"
-          onClick={updateNeed}
-          disabled={saving}
-        >
-          Speichern
-        </button>
-
-        <button
-          className="px-4 py-2 bg-red-500 text-slate-900 rounded-md font-bold"
-          onClick={removeNeed}
-        >
-          Löschen
-        </button>
+        </div>
       </div>
+
+      {/* preferred foot */}
+      <div className="space-y-1">
+        <label className="text-sm text-slate-400">Bevorzugter Fuß</label>
+        <select
+          value={need.preferredFoot || ""}
+          onChange={(e) =>
+            setNeed({ ...need, preferredFoot: e.target.value || null })
+          }
+          className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
+        >
+          <option value="">egal</option>
+          <option value="rechts">rechts</option>
+          <option value="links">links</option>
+          <option value="beide">beidfüßig</option>
+        </select>
+      </div>
+
+      {/* Multi-League Selector */}
+      <div className="space-y-1">
+        <label className="text-sm text-slate-400">Ligen</label>
+        <select
+          multiple
+          value={need.leagues || []}
+          onChange={(e) => {
+            const list = Array.from(e.target.selectedOptions).map(
+              (o) => o.value
+            );
+            setNeed({ ...need, leagues: list });
+          }}
+          className="bg-slate-900 border border-slate-700 p-2 rounded w-full h-32"
+        >
+          {allLeagues.map((l) => (
+            <option key={l}>{l}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Stats */}
+      <div className="space-y-1">
+        <label className="text-sm text-slate-400">Minimum-Stats</label>
+        <div className="grid grid-cols-3 gap-3">
+          {STAT_KEYS.map((key) => (
+            <div key={key}>
+              <label className="text-xs text-slate-500">{key}</label>
+              <input
+                type="number"
+                value={need.minStats[key] || ""}
+                onChange={(e) =>
+                  setNeed({
+                    ...need,
+                    minStats: {
+                      ...need.minStats,
+                      [key]: Number(e.target.value),
+                    },
+                  })
+                }
+                className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Required Traits */}
+      <div className="space-y-1">
+        <label className="text-sm text-slate-400">Benötigte Traits</label>
+        <input
+          type="text"
+          placeholder="kommagetrennte Liste"
+          value={need.requiredTraits?.join(", ") || ""}
+          onChange={(e) =>
+            setNeed({
+              ...need,
+              requiredTraits: e.target.value
+                .split(",")
+                .map((t) => t.trim())
+                .filter(Boolean),
+            })
+          }
+          className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
+        />
+      </div>
+
+      {/* Save Button */}
+      <button
+        onClick={saveNeed}
+        disabled={saving}
+        className="bg-emerald-500 px-4 py-2 text-slate-900 rounded font-semibold"
+      >
+        {saving ? "Speichern…" : "Need speichern"}
+      </button>
     </div>
   );
 }
