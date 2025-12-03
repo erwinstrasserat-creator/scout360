@@ -5,7 +5,9 @@ export const runtime = "nodejs";
 
 const API_FOOTBALL_BASE = "https://v3.football.api-sports.io";
 
-/** Allgemeiner API-Football Fetch Wrapper */
+/* ----------------------------------------------------
+   API Wrapper
+---------------------------------------------------- */
 async function apiFootballFetch(
   path: string,
   params: Record<string, string | number>
@@ -13,10 +15,11 @@ async function apiFootballFetch(
   const apiKey = process.env.API_FOOTBALL_KEY;
 
   if (!apiKey) {
-    throw new Error("API_FOOTBALL_KEY fehlt in .env.local");
+    throw new Error("API_FOOTBALL_KEY fehlt in .env.local oder bei Vercel!");
   }
 
   const url = new URL(API_FOOTBALL_BASE + path);
+
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, String(value));
   }
@@ -24,7 +27,9 @@ async function apiFootballFetch(
   const res = await fetch(url.toString(), {
     headers: {
       "x-apisports-key": apiKey,
+      accept: "application/json",
     },
+    cache: "no-store",
   });
 
   if (!res.ok) {
@@ -35,14 +40,17 @@ async function apiFootballFetch(
   return res.json();
 }
 
-/** Höhe in cm parsen */
+/* ----------------------------------------------------
+   Helper
+---------------------------------------------------- */
 function parseHeightToCm(height: string | undefined | null): number | null {
   if (!height) return null;
-  const parsed = parseInt(height);
+
+  // API liefert z.B. "182 cm" oder "182"
+  const parsed = parseInt(height.replace("cm", "").trim());
   return isNaN(parsed) ? null : parsed;
 }
 
-/** Leihstatus aus Transfers extrahieren */
 function extractLoanInfo(transfers: any[]): {
   onLoan: boolean;
   loanFrom: string | null;
@@ -50,21 +58,22 @@ function extractLoanInfo(transfers: any[]): {
   if (!Array.isArray(transfers)) return { onLoan: false, loanFrom: null };
 
   for (const t of transfers) {
-    if (t.type && typeof t.type === "string") {
-      if (t.type.toLowerCase().includes("loan")) {
-        // Achtung: je nach API-Struktur ggf. in/out vertauscht – hier nur grob
-        return {
-          onLoan: true,
-          loanFrom: t.teams?.in?.name ?? null,
-        };
-      }
+    const type = t.type?.toLowerCase() ?? "";
+
+    if (type.includes("loan") || type.includes("loan transfer")) {
+      return {
+        onLoan: true,
+        loanFrom: t.teams?.in?.name ?? null,
+      };
     }
   }
 
   return { onLoan: false, loanFrom: null };
 }
 
-/** POST – Spieler holen & in vereinfachtes Format bringen */
+/* ----------------------------------------------------
+   POST – Hauptlogik
+---------------------------------------------------- */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -72,7 +81,7 @@ export async function POST(req: NextRequest) {
     const season = Number(body.season) || 2025;
 
     const leagueIds: number[] = Array.isArray(body.leagueIds)
-      ? body.leagueIds.map((n) => Number(n)).filter((n) => !isNaN(n))
+      ? body.leagueIds.map((n) => Number(n))
       : [];
 
     if (!leagueIds.length) {
@@ -83,10 +92,12 @@ export async function POST(req: NextRequest) {
     }
 
     const allPlayers: any[] = [];
-    const playerCache = new Set<number>();
+    const cache = new Set<number>();
 
+    /* ----------------------------------------------------
+       1) Ligen → Teams holen
+    ---------------------------------------------------- */
     for (const leagueId of leagueIds) {
-      // 1️⃣ Teams laden
       const teamsJson = await apiFootballFetch("/teams", {
         league: leagueId,
         season,
@@ -97,56 +108,60 @@ export async function POST(req: NextRequest) {
         : [];
 
       const teamIds = teams
-        .map((t) => t.team?.id)
-        .filter((id) => typeof id === "number");
+        .map((t: any) => t.team?.id)
+        .filter((x: any) => typeof x === "number");
 
-      // 2️⃣ Für jede Mannschaft Spieler holen
+      /* ----------------------------------------------------
+         2) Teams → Spieler paginiert holen
+      ---------------------------------------------------- */
       for (const teamId of teamIds) {
         let page = 1;
 
-        while (page <= 10) {
+        while (true) {
           const playersJson = await apiFootballFetch("/players", {
             team: teamId,
             season,
             page,
           });
 
-          const playersArr = Array.isArray(playersJson.response)
+          const arr = Array.isArray(playersJson.response)
             ? playersJson.response
             : [];
 
-          if (!playersArr.length) break;
+          if (!arr.length) break;
 
-          for (const item of playersArr) {
+          for (const item of arr) {
             const p = item.player;
             const stats = Array.isArray(item.statistics)
               ? item.statistics[0]
               : null;
 
-            if (!p?.id) continue;
-            if (playerCache.has(p.id)) continue; // Duplikate vermeiden
-            playerCache.add(p.id);
+            if (!p?.id || cache.has(p.id)) continue;
+            cache.add(p.id);
 
+            /* Loan-Infos */
             const loan = extractLoanInfo(p.transfers ?? []);
 
+            /* ----------------------------------------------------
+               Spielerobjekt passend zur Seed-Page
+            ---------------------------------------------------- */
             const playerObj = {
               apiId: p.id,
               name: p.name ?? null,
               age: p.age ?? null,
               heightCm: parseHeightToCm(p.height),
+
               position: stats?.games?.position ?? null,
               foot: p.preferred_foot ?? null,
+
               league: stats?.league?.name ?? null,
               club: stats?.team?.name ?? null,
 
-              // Loan-Infos
               onLoan: loan.onLoan,
               loanFrom: loan.loanFrom,
 
-              // Marktwert wird später im Admin manuell gesetzt
-              marketValue: null as number | null,
+              marketValue: null,
 
-              // Stats – Platzhalter
               stats: {
                 offensiv: null,
                 defensiv: null,
@@ -156,28 +171,30 @@ export async function POST(req: NextRequest) {
                 tempo: null,
               },
 
-              traits: [] as string[],
+              traits: [],
             };
 
             allPlayers.push(playerObj);
           }
 
+          // Pagination Ende?
           if (!playersJson.paging) break;
           if (page >= playersJson.paging.total) break;
+
           page++;
         }
       }
     }
 
     return NextResponse.json(allPlayers, { status: 200 });
-  } catch (error: any) {
-    console.error("❌ fetchPlayers error:", {
-      message: error?.message,
-      stack: error?.stack,
-    });
+  } catch (err: any) {
+    console.error("❌ fetchPlayers error:", err);
 
     return NextResponse.json(
-      { error: "fetchPlayers failed", message: error?.message },
+      {
+        error: "fetchPlayers failed",
+        message: err?.message,
+      },
       { status: 500 }
     );
   }
