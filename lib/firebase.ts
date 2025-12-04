@@ -8,26 +8,27 @@ const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET!, // <- FIX: appspot.com
   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!
 };
 
-if (!process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID) {
-  console.warn("⚠️ Firebase Env Variablen fehlen! Prüfe .env.local");
+// Env Check
+if (!process.env.NEXT_PUBLIC_FIREBASE_API_KEY) {
+  console.error("❌ Firebase ENV fehlen — .env.local prüfen!");
 }
 
-// Singleton-Init
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+// Singleton Init
+const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 // Dienste
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-// Auth-Persistence nur im Browser
+// Persistenz nur im Browser
 if (typeof window !== "undefined") {
   setPersistence(auth, browserLocalPersistence).catch((err) => {
-    console.warn("⚠️ Auth-Persistence Fehler:", err);
+    console.warn("⚠️ Auth Persistence Error:", err);
   });
 }

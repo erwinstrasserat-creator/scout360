@@ -1,5 +1,9 @@
-// app/admin/needs/[id]/page.tsx
+
 "use client";
+
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
@@ -25,7 +29,6 @@ type Need = {
   preferredFoot?: string | null;
   minStats?: MinStats | null;
   requiredTraits?: string[] | null;
-  // leagues?: string[] | null; // existiert evtl. noch in Firestore, wird aber hier nicht mehr bearbeitet
 };
 
 export default function EditNeedPage({ params }: { params: { id: string } }) {
@@ -33,6 +36,9 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    // ⛔ Wichtig: keine Firestore-Abfrage während des Next.js-Builds!
+    if (typeof window === "undefined") return;
+
     const loadNeed = async () => {
       const ref = doc(db, "needs", params.id);
       const snap = await getDoc(ref);

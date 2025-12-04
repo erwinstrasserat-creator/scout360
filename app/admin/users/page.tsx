@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
@@ -16,29 +20,40 @@ export default function UsersAdminPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // ⛔ WICHTIG: verhindert Firebase-Zugriff während next build / SSR
+    if (typeof window === "undefined") return;
+
     const loadUsers = async () => {
       try {
-        const ref = collection(db, "users");
-        const snap = await getDocs(ref);
+          // Users laden
+        const userSnap = await getDocs(collection(db, "users"));
 
-        const list: UserItem[] = [];
-
-        for (const d of snap.docs) {
+        const promises = userSnap.docs.map(async (d) => {
           const uid = d.id;
           const userData = d.data();
 
-          // separate roles collection
-          const roleSnap = await getDoc(doc(db, "userRoles", uid));
-          const role = roleSnap.exists() ? roleSnap.data().role : "none";
+          // Rolle separat holen
+          try {
+            const roleSnap = await getDoc(doc(db, "userRoles", uid));
+            const role = roleSnap.exists() ? roleSnap.data().role : "none";
 
-          list.push({
-            id: uid,
-            email: userData.email ?? "unbekannt",
-            role,
-          });
-        }
+            return {
+              id: uid,
+              email: userData.email ?? "unbekannt",
+              role,
+            } as UserItem;
+          } catch (err) {
+            console.error("Fehler beim Laden der Rolle:", err);
+            return {
+              id: uid,
+              email: userData.email ?? "unbekannt",
+              role: "none",
+            } as UserItem;
+          }
+        });
 
-        setUsers(list);
+        const fullList = await Promise.all(promises);
+        setUsers(fullList);
       } catch (err) {
         console.error("Fehler beim Laden der Benutzer:", err);
       } finally {
@@ -80,9 +95,7 @@ export default function UsersAdminPage() {
               </div>
             </div>
 
-            <div className="text-sm text-emerald-300">
-              Bearbeiten →
-            </div>
+            <div className="text-sm text-emerald-300">Bearbeiten →</div>
           </Link>
         ))}
       </div>

@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
@@ -20,6 +24,12 @@ export default function PlayersAdminPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // ⛔ verhindert Firestore-Zugriff während des Build-Prozesses
+    if (typeof window === "undefined") {
+      setLoading(false); // <-- WICHTIG, sonst hängt die Seite im Loading!
+      return;
+    }
+
     const loadPlayers = async () => {
       try {
         const snap = await getDocs(collection(db, "players"));

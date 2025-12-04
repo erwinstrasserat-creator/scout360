@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
@@ -10,6 +14,9 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // ⛔ verhindert Firestore-Zugriff im Next.js-Build
+    if (typeof window === "undefined") return;
+
     const loadReports = async () => {
       try {
         const ref = collection(db, "playerReports");

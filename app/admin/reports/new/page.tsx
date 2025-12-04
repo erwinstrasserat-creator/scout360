@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useEffect, useState, FormEvent } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { doc, getDoc, addDoc, collection } from "firebase/firestore";
@@ -27,21 +31,31 @@ export default function NewReportPage() {
 
   const [rating, setRating] = useState(3);
   const [currentForm, setCurrentForm] = useState("durchschnittlich");
-  const [recommendation, setRecommendation] =
-    useState("beobachten");
+  const [recommendation, setRecommendation] = useState("beobachten");
 
   const [notes, setNotes] = useState("");
 
-  // Spieler laden
+  // Spieler laden – aber nur im Browser
   useEffect(() => {
+    // ⛔ verhindert SSR-Firestore-Zugriff!
+    if (typeof window === "undefined") {
+      setLoading(false);
+      return;
+    }
+
     if (!playerId) return;
 
     const load = async () => {
-      const snap = await getDoc(doc(db, "players", playerId));
-      if (snap.exists()) {
-        setPlayer({ id: snap.id, ...(snap.data() as Player) });
+      try {
+        const snap = await getDoc(doc(db, "players", playerId));
+        if (snap.exists()) {
+          setPlayer({ id: snap.id, ...(snap.data() as Player) });
+        }
+      } catch (e) {
+        console.error("Fehler beim Laden des Spielers:", e);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     load();
@@ -201,9 +215,7 @@ export default function NewReportPage() {
               onChange={(e) => setRecommendation(e.target.value)}
               className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1"
             >
-              <option value="sofort verpflichten">
-                sofort verpflichten
-              </option>
+              <option value="sofort verpflichten">sofort verpflichten</option>
               <option value="beobachten">beobachten</option>
               <option value="nicht geeignet">nicht geeignet</option>
             </select>

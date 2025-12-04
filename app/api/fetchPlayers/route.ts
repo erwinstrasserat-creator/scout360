@@ -2,12 +2,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const API_FOOTBALL_BASE = "https://v3.football.api-sports.io";
 
-/* ----------------------------------------------------
-   API Wrapper
----------------------------------------------------- */
+/** Allgemeiner API-Football Fetch Wrapper */
 async function apiFootballFetch(
   path: string,
   params: Record<string, string | number>
@@ -15,11 +16,10 @@ async function apiFootballFetch(
   const apiKey = process.env.API_FOOTBALL_KEY;
 
   if (!apiKey) {
-    throw new Error("API_FOOTBALL_KEY fehlt in .env.local oder bei Vercel!");
+    throw new Error("API_FOOTBALL_KEY fehlt in .env.local / Vercel");
   }
 
   const url = new URL(API_FOOTBALL_BASE + path);
-
   for (const [key, value] of Object.entries(params)) {
     url.searchParams.set(key, String(value));
   }
@@ -27,7 +27,6 @@ async function apiFootballFetch(
   const res = await fetch(url.toString(), {
     headers: {
       "x-apisports-key": apiKey,
-      accept: "application/json",
     },
     cache: "no-store",
   });
@@ -40,17 +39,14 @@ async function apiFootballFetch(
   return res.json();
 }
 
-/* ----------------------------------------------------
-   Helper
----------------------------------------------------- */
+/** Höhe in cm parsen */
 function parseHeightToCm(height: string | undefined | null): number | null {
   if (!height) return null;
-
-  // API liefert z.B. "182 cm" oder "182"
-  const parsed = parseInt(height.replace("cm", "").trim());
+  const parsed = parseInt(height);
   return isNaN(parsed) ? null : parsed;
 }
 
+/** Leihstatus aus Transfers extrahieren */
 function extractLoanInfo(transfers: any[]): {
   onLoan: boolean;
   loanFrom: string | null;
@@ -58,22 +54,24 @@ function extractLoanInfo(transfers: any[]): {
   if (!Array.isArray(transfers)) return { onLoan: false, loanFrom: null };
 
   for (const t of transfers) {
-    const type = t.type?.toLowerCase() ?? "";
-
-    if (type.includes("loan") || type.includes("loan transfer")) {
-      return {
-        onLoan: true,
-        loanFrom: t.teams?.in?.name ?? null,
-      };
+    if (t.type && typeof t.type === "string") {
+      if (t.type.toLowerCase().includes("loan")) {
+        // Achtung: Struktur kann variieren – hier einfache Heuristik
+        return {
+          onLoan: true,
+          loanFrom: t.teams?.in?.name ?? null,
+        };
+      }
     }
   }
 
   return { onLoan: false, loanFrom: null };
 }
 
-/* ----------------------------------------------------
-   POST – Hauptlogik
----------------------------------------------------- */
+/**
+ * POST – Spieler holen & in vereinfachtes Format bringen
+ * Body: { season: number, leagueIds: number[] }
+ */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -81,7 +79,7 @@ export async function POST(req: NextRequest) {
     const season = Number(body.season) || 2025;
 
     const leagueIds: number[] = Array.isArray(body.leagueIds)
-      ? body.leagueIds.map((n) => Number(n))
+      ? body.leagueIds.map((n: any) => Number(n)).filter((n) => !isNaN(n))
       : [];
 
     if (!leagueIds.length) {
@@ -92,12 +90,11 @@ export async function POST(req: NextRequest) {
     }
 
     const allPlayers: any[] = [];
-    const cache = new Set<number>();
+    const playerCache = new Set<number>();
 
-    /* ----------------------------------------------------
-       1) Ligen → Teams holen
-    ---------------------------------------------------- */
+    // 🔁 pro Liga
     for (const leagueId of leagueIds) {
+      // 1️⃣ Teams laden
       const teamsJson = await apiFootballFetch("/teams", {
         league: leagueId,
         season,
@@ -109,92 +106,86 @@ export async function POST(req: NextRequest) {
 
       const teamIds = teams
         .map((t: any) => t.team?.id)
-        .filter((x: any) => typeof x === "number");
+        .filter((id: any) => typeof id === "number");
 
-      /* ----------------------------------------------------
-         2) Teams → Spieler paginiert holen
-      ---------------------------------------------------- */
+      // 2️⃣ Für jede Mannschaft Spieler holen
       for (const teamId of teamIds) {
         let page = 1;
 
-        while (true) {
+        while (page <= 10) {
           const playersJson = await apiFootballFetch("/players", {
             team: teamId,
             season,
             page,
           });
 
-          const arr = Array.isArray(playersJson.response)
+          const playersArr = Array.isArray(playersJson.response)
             ? playersJson.response
             : [];
 
-          if (!arr.length) break;
+          if (!playersArr.length) break;
 
-          for (const item of arr) {
+          for (const item of playersArr) {
             const p = item.player;
             const stats = Array.isArray(item.statistics)
               ? item.statistics[0]
               : null;
 
-            if (!p?.id || cache.has(p.id)) continue;
-            cache.add(p.id);
+            if (!p?.id) continue;
+            if (playerCache.has(p.id)) continue; // Duplikate vermeiden
+            playerCache.add(p.id);
 
-            /* Loan-Infos */
             const loan = extractLoanInfo(p.transfers ?? []);
 
-            /* ----------------------------------------------------
-               Spielerobjekt passend zur Seed-Page
-            ---------------------------------------------------- */
             const playerObj = {
               apiId: p.id,
               name: p.name ?? null,
               age: p.age ?? null,
               heightCm: parseHeightToCm(p.height),
-
               position: stats?.games?.position ?? null,
               foot: p.preferred_foot ?? null,
-
               league: stats?.league?.name ?? null,
               club: stats?.team?.name ?? null,
 
+              // Loan-Infos
               onLoan: loan.onLoan,
               loanFrom: loan.loanFrom,
 
-              marketValue: null,
+              // Marktwert wird später im Admin manuell gesetzt
+              marketValue: null as number | null,
 
+              // Stats – Platzhalter
               stats: {
-                offensiv: null,
-                defensiv: null,
-                intelligenz: null,
-                physis: null,
-                technik: null,
-                tempo: null,
+                offensiv: null as number | null,
+                defensiv: null as number | null,
+                intelligenz: null as number | null,
+                physis: null as number | null,
+                technik: null as number | null,
+                tempo: null as number | null,
               },
 
-              traits: [],
+              traits: [] as string[],
             };
 
             allPlayers.push(playerObj);
           }
 
-          // Pagination Ende?
           if (!playersJson.paging) break;
           if (page >= playersJson.paging.total) break;
-
           page++;
         }
       }
     }
 
     return NextResponse.json(allPlayers, { status: 200 });
-  } catch (err: any) {
-    console.error("❌ fetchPlayers error:", err);
+  } catch (error: any) {
+    console.error("❌ fetchPlayers error:", {
+      message: error?.message,
+      stack: error?.stack,
+    });
 
     return NextResponse.json(
-      {
-        error: "fetchPlayers failed",
-        message: err?.message,
-      },
+      { error: "fetchPlayers failed", message: error?.message },
       { status: 500 }
     );
   }

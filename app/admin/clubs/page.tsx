@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
@@ -10,6 +14,12 @@ export default function ClubsAdminPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // ⛔ Verhindert SSR-Firestore-Zugriff
+    if (typeof window === "undefined") {
+      setLoading(false);
+      return;
+    }
+
     const loadClubs = async () => {
       try {
         const ref = collection(db, "clubs");
@@ -49,7 +59,6 @@ export default function ClubsAdminPage() {
             <div className="flex justify-between items-center">
               <div>
                 <div className="font-bold text-lg">{club.name}</div>
-
                 <div className="text-sm text-slate-400">
                   {club.country ?? "Land unbekannt"}
                 </div>

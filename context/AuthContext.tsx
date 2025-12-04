@@ -29,21 +29,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(firebaseUser);
 
       if (firebaseUser) {
-        // Rolle laden
+        // Rolle aus Firestore laden
         const snap = await getDoc(doc(db, "userRoles", firebaseUser.uid));
         const userRole = snap.exists() ? snap.data().role : "none";
 
         setRole(userRole);
 
-        // Cookies für protected middleware setzen
-        document.cookie = `auth=true; path=/; max-age=86400; SameSite=Lax`;
-        document.cookie = `role=${userRole}; path=/; max-age=86400; SameSite=Lax`;
-
+        // Cookies für Middleware setzen
+        document.cookie = `auth=true; Path=/; SameSite=Lax`;
+        document.cookie = `role=${userRole}; Path=/; SameSite=Lax`;
       } else {
-        // Benutzer abgemeldet → Cookies löschen
         setRole(null);
-        document.cookie = "auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-        document.cookie = "role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+
+        // Cookies löschen
+        document.cookie = "auth=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        document.cookie = "role=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
       }
 
       setLoading(false);
@@ -56,8 +56,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await signOut(auth);
 
     // Cookies löschen
-    document.cookie = "auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
-    document.cookie = "role=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    document.cookie = "auth=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+    document.cookie = "role=; Path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
   };
 
   return (

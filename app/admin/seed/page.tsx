@@ -1,7 +1,10 @@
-// app/admin/seed/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
+import { useEffect, useMemo, useState } from "react";
 import { db } from "@/lib/firebase";
 import {
   collection,
@@ -38,6 +41,15 @@ type Player = {
   traits?: string[];
 };
 
+type NeedStats = {
+  defensiv: number | null;
+  intelligenz: number | null;
+  offensiv: number | null;
+  physis: number | null;
+  technik: number | null;
+  tempo: number | null;
+};
+
 type NeedDoc = {
   id: string;
   position?: string;
@@ -48,23 +60,7 @@ type NeedDoc = {
   preferredFoot?: string | null;
   requiredTraits?: string[] | null;
   leagues?: string[] | null;
-  minStats?: {
-    defensiv?: number | null;
-    intelligenz?: number | null;
-    offensiv?: number | null;
-    physis?: number | null;
-    technik?: number | null;
-    tempo?: number | null;
-  } | null;
-};
-
-type NeedStats = {
-  defensiv: number | null;
-  intelligenz: number | null;
-  offensiv: number | null;
-  physis: number | null;
-  technik: number | null;
-  tempo: number | null;
+  minStats?: Partial<NeedStats> | null;
 };
 
 type NeedFilter = {
@@ -79,6 +75,16 @@ type NeedFilter = {
   minStats: NeedStats | null;
 };
 
+type LeagueItem = {
+  id: number;
+  name: string;
+  country: string;
+  type: string | null;
+  logo?: string | null;
+};
+
+type LeagueGroups = Record<string, LeagueItem[]>;
+
 /* helper */
 const emptyStats = (): NeedStats => ({
   defensiv: null,
@@ -88,108 +94,6 @@ const emptyStats = (): NeedStats => ({
   technik: null,
   tempo: null,
 });
-
-/* ─────────────────────────────────────────
-   Ligen (typisiert)
-─────────────────────────────────────────── */
-
-type LeagueItem = { id: number; name: string };
-type LeagueGroup = Record<string, LeagueItem[]>;
-
-const LEAGUES: LeagueGroup = {
-  topFive: [
-    { id: 39, name: "England – Premier League" },
-    { id: 40, name: "England – Championship" },
-    { id: 41, name: "England – League One" },
-
-    { id: 78, name: "Deutschland – Bundesliga" },
-    { id: 79, name: "Deutschland – 2. Bundesliga" },
-    { id: 80, name: "Deutschland – 3. Liga" },
-
-    { id: 135, name: "Italien – Serie A" },
-    { id: 136, name: "Italien – Serie B" },
-    { id: 138, name: "Italien – Serie C" },
-
-    { id: 140, name: "Spanien – La Liga" },
-    { id: 141, name: "Spanien – Segunda División" },
-
-    { id: 61, name: "Frankreich – Ligue 1" },
-    { id: 62, name: "Frankreich – Ligue 2" },
-  ],
-
-  westEurope: [
-    { id: 88, name: "Niederlande – Eredivisie" },
-    { id: 89, name: "Niederlande – 2. Liga" },
-    { id: 144, name: "Belgien – Pro League" },
-    { id: 145, name: "Belgien – 2. Liga" },
-    { id: 94, name: "Portugal – Primeira Liga" },
-    { id: 203, name: "Türkei – Süper Lig" },
-    { id: 204, name: "Türkei – TFF 1. Lig" },
-  ],
-
-  centralEast: [
-    { id: 0, name: "Österreich – Bundesliga" },
-    { id: 0, name: "Österreich – 2. Liga" },
-    { id: 179, name: "Schweiz – Super League" },
-    { id: 0, name: "Schweiz – Challenge League" },
-    { id: 0, name: "Tschechien – 1. Liga" },
-    { id: 0, name: "Tschechien – 2. Liga" },
-    { id: 0, name: "Slowakei – 1. Liga" },
-    { id: 0, name: "Slowakei – 2. Liga" },
-    { id: 0, name: "Ungarn – 1. Liga" },
-    { id: 0, name: "Rumänien – 1. Liga" },
-    { id: 0, name: "Rumänien – 2. Liga" },
-    { id: 0, name: "Bulgarien – 1. Liga" },
-    { id: 0, name: "Bulgarien – 2. Liga" },
-    { id: 0, name: "Ukraine – 1. Liga" },
-  ],
-
-  balkan: [
-    { id: 0, name: "Kroatien – 1. Liga" },
-    { id: 0, name: "Kroatien – 2. Liga" },
-    { id: 0, name: "Slowenien – 1. Liga" },
-    { id: 0, name: "Slowenien – 2. Liga" },
-    { id: 45, name: "Serbien – SuperLiga" },
-    { id: 0, name: "Serbien – 2. Liga" },
-    { id: 0, name: "Bosnien – 1. Liga" },
-    { id: 0, name: "Montenegro – 1. Liga" },
-  ],
-
-  southEurope: [
-    { id: 0, name: "Griechenland – 1. Liga" },
-    { id: 0, name: "Griechenland – 2. Liga" },
-    { id: 0, name: "Zypern – 1. Liga" },
-  ],
-
-  nordicsIsles: [
-    { id: 87, name: "Schweden – Allsvenskan" },
-    { id: 0, name: "Schweden – 2. Liga" },
-    { id: 0, name: "Norwegen – 1. Liga" },
-    { id: 0, name: "Norwegen – 2. Liga" },
-    { id: 0, name: "Finnland – 1. Liga" },
-    { id: 96, name: "Schottland – Premiership" },
-    { id: 0, name: "Schottland – 2. Liga" },
-    { id: 0, name: "Wales – 1. Liga" },
-    { id: 0, name: "Wales – 2. Liga" },
-  ],
-
-  baltic: [
-    { id: 0, name: "Estland – 1. Liga" },
-    { id: 0, name: "Lettland – 1. Liga" },
-    { id: 0, name: "Litauen – 1. Liga" },
-  ],
-
-  asia: [
-    { id: 98, name: "Japan – J-League" },
-    { id: 292, name: "Südkorea – K-League 1" },
-  ],
-
-  africa: [
-    { id: 233, name: "Ägypten – Premier League" },
-    { id: 196, name: "Südafrika – Premier Division" },
-    { id: 200, name: "Marokko – Botola Pro" },
-  ],
-};
 
 const SEASONS = [2023, 2024, 2025, 2026];
 
@@ -202,6 +106,11 @@ export default function AdminSeedPage() {
   const [selectedNeedId, setSelectedNeedId] = useState("");
 
   const [season, setSeason] = useState(2025);
+
+  const [allLeagues, setAllLeagues] = useState<LeagueItem[]>([]);
+  const [leaguesLoading, setLeaguesLoading] = useState(false);
+  const [leagueSearch, setLeagueSearch] = useState("");
+
   const [selectedLeagueIds, setSelectedLeagueIds] = useState<number[]>([]);
   const [excludeLoans, setExcludeLoans] = useState(false);
   const [nameFilter, setNameFilter] = useState("");
@@ -220,24 +129,78 @@ export default function AdminSeedPage() {
 
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [fixingLeagues, setFixingLeagues] = useState(false);
 
   const filterLocked = selectedNeedId !== "";
 
-  /* Needs laden */
+  /* Needs laden (nur im Browser) */
   useEffect(() => {
-    const load = async () => {
-      const snap = await getDocs(collection(db, "needs"));
-      setNeeds(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+    if (typeof window === "undefined") return;
+
+    const loadNeeds = async () => {
+      try {
+        const snap = await getDocs(collection(db, "needs"));
+        setNeeds(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+      } catch (err) {
+        console.error("Fehler beim Laden der Needs:", err);
+      }
     };
-    load();
+
+    loadNeeds();
   }, []);
+
+  /* Ligen von API-Football laden (nur im Browser sinnvoll) */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const loadLeagues = async () => {
+      setLeaguesLoading(true);
+      try {
+        const res = await fetch(`/api/leagues?season=${season}`);
+        if (!res.ok) {
+          console.error(await res.text());
+          setStatus("❌ Fehler beim Laden der Ligen.");
+          return;
+        }
+        const data: LeagueItem[] = await res.json();
+        setAllLeagues(data);
+      } catch (err) {
+        console.error(err);
+        setStatus("❌ Unerwarteter Fehler beim Laden der Ligen.");
+      } finally {
+        setLeaguesLoading(false);
+      }
+    };
+
+    loadLeagues();
+  }, [season]);
+
+  /* Ligen gruppiert nach Land + Suche */
+  const groupedLeagues: LeagueGroups = useMemo(() => {
+    const result: LeagueGroups = {};
+
+    const search = leagueSearch.trim().toLowerCase();
+
+    for (const lg of allLeagues) {
+      const text = (lg.country + " " + lg.name).toLowerCase();
+      if (search && !text.includes(search)) continue;
+
+      if (!result[lg.country]) result[lg.country] = [];
+      result[lg.country].push(lg);
+    }
+
+    for (const country of Object.keys(result)) {
+      result[country].sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    return result;
+  }, [allLeagues, leagueSearch]);
 
   /* Need übernehmen */
   const applyNeed = (id: string) => {
     setSelectedNeedId(id);
 
     if (!id) {
+      // Manuelle Eingabe wieder freigeben
       setFilter({
         heightMin: null,
         heightMax: null,
@@ -256,6 +219,11 @@ export default function AdminSeedPage() {
     const nd = needs.find((n) => n.id === id);
     if (!nd) return;
 
+    const minStats: NeedStats = {
+      ...emptyStats(),
+      ...(nd.minStats || {}),
+    };
+
     setFilter({
       heightMin: nd.heightMin ?? null,
       heightMax: nd.heightMax ?? null,
@@ -265,10 +233,10 @@ export default function AdminSeedPage() {
       position: nd.position ?? null,
       requiredTraits: nd.requiredTraits ?? null,
       leagues: nd.leagues ?? null,
-      minStats: (nd.minStats as NeedStats | null) ?? emptyStats(),
+      minStats,
     });
 
-    setStatus("Filter aus Need übernommen (gesperrt).");
+    setStatus("Filter aus Need übernommen (Bearbeitung gesperrt).");
   };
 
   /* Ligen togglen */
@@ -282,7 +250,7 @@ export default function AdminSeedPage() {
   const setNumberFilter = (key: keyof NeedFilter, value: string) => {
     if (filterLocked) return;
     const num = value === "" ? null : Number(value);
-    setFilter((prev) => ({ ...prev, [key]: isNaN(num) ? null : num }));
+    setFilter((prev) => ({ ...prev, [key]: isNaN(num as number) ? null : num }));
   };
 
   const setTextFilter = (key: keyof NeedFilter, value: string) => {
@@ -297,7 +265,7 @@ export default function AdminSeedPage() {
       ...prev,
       minStats: {
         ...(prev.minStats ?? emptyStats()),
-        [key]: isNaN(num) ? null : num,
+        [key]: isNaN(num as number) ? null : num,
       },
     }));
   };
@@ -355,7 +323,7 @@ export default function AdminSeedPage() {
       for (const key of Object.keys(filter.minStats) as (keyof NeedStats)[]) {
         const min = filter.minStats[key];
         if (typeof min === "number") {
-          const val = p.stats?.[key] ?? 0;
+          const val = p.stats[key] ?? 0;
           if (val < min) return false;
         }
       }
@@ -366,6 +334,11 @@ export default function AdminSeedPage() {
 
   /* Import */
   const importFromApi = async () => {
+    if (typeof window === "undefined") {
+      setStatus("❌ Import ist nur im Browser möglich.");
+      return;
+    }
+
     if (!selectedLeagueIds.length) {
       return setStatus("❌ Bitte mindestens eine Liga auswählen.");
     }
@@ -382,26 +355,28 @@ export default function AdminSeedPage() {
 
       if (!res.ok) {
         console.error(await res.text());
-        setStatus("❌ Fehler beim Abrufen.");
-        setLoading(false);
+        setStatus("❌ Fehler beim Abrufen der Spieler.");
         return;
       }
 
       const allPlayers: Player[] = await res.json();
+
+      console.log("API-Spieler empfangen:", allPlayers.length);
       const filtered = allPlayers.filter(matchesFilter);
+      console.log("Nach Filter:", filtered.length);
 
       setStatus(
-        `⏳ Importiere ${filtered.length} von ${allPlayers.length} Spielern…`
+        `⏳ Importiere ${filtered.length} von ${allPlayers.length} Spielern in Firestore…`
       );
 
       for (const p of filtered) {
         await setDoc(doc(collection(db, "players")), p);
       }
 
-      setStatus(`✔️ Import abgeschlossen (${filtered.length} gespeichert).`);
+      setStatus(`✔️ Import abgeschlossen (${filtered.length} Spieler gespeichert).`);
     } catch (err) {
       console.error(err);
-      setStatus("❌ Fehler beim Import.");
+      setStatus("❌ Unerwarteter Fehler beim Import.");
     } finally {
       setLoading(false);
     }
@@ -409,45 +384,24 @@ export default function AdminSeedPage() {
 
   /* DB löschen */
   const clearDatabase = async () => {
-    if (!confirm("Alle Spieler löschen?")) return;
+    if (typeof window === "undefined") {
+      setStatus("❌ Löschen ist nur im Browser möglich.");
+      return;
+    }
+
+    if (!confirm("Alle Spieler in 'players' löschen?")) return;
 
     setStatus("⏳ Lösche Spieler…");
 
-    const snap = await getDocs(collection(db, "players"));
-    for (const d of snap.docs) await deleteDoc(d.ref);
-
-    setStatus("✔️ Datenbank geleert.");
-  };
-
-  /* Auto-Fix Liga-IDs → Backend schreibt in Firestore (Option C) */
-  const autoFixLeagueIds = async () => {
-    setFixingLeagues(true);
-    setStatus("⏳ Gleiche Ligen mit API-Football ab…");
-
     try {
-      const res = await fetch("/api/league-fix", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        // wir geben die komplette Struktur an das Backend,
-        // dort werden die IDs gesucht und in Firestore gespeichert
-        body: JSON.stringify({ leagues: LEAGUES }),
-      });
-
-      if (!res.ok) {
-        console.error(await res.text());
-        setStatus("❌ Fehler beim Liga-Abgleich (Backend /api/league-fix prüfen).");
-        return;
+      const snap = await getDocs(collection(db, "players"));
+      for (const d of snap.docs) {
+        await deleteDoc(d.ref);
       }
-
-      const data = await res.json().catch(() => ({} as any));
-      const updated = (data && data.updated) || 0;
-
-      setStatus(`✔️ Liga-IDs aktualisiert. ${updated} Ligen in Firestore gespeichert.`);
+      setStatus("✔️ Datenbank geleert.");
     } catch (err) {
-      console.error(err);
-      setStatus("❌ Fehler beim Liga-Abgleich.");
-    } finally {
-      setFixingLeagues(false);
+      console.error("Fehler beim Löschen:", err);
+      setStatus("❌ Fehler beim Löschen der Datenbank.");
     }
   };
 
@@ -540,7 +494,7 @@ export default function AdminSeedPage() {
 
             {/* Größe */}
             <div>
-              <label className="text-xs text-slate-400">Größe min</label>
+              <label className="text-xs text-slate-400">Größe min (cm)</label>
               <input
                 type="number"
                 disabled={filterLocked}
@@ -551,7 +505,7 @@ export default function AdminSeedPage() {
             </div>
 
             <div>
-              <label className="text-xs text-slate-400">Größe max</label>
+              <label className="text-xs text-slate-400">Größe max (cm)</label>
               <input
                 type="number"
                 disabled={filterLocked}
@@ -639,37 +593,52 @@ export default function AdminSeedPage() {
         </div>
 
         {/* Ligen */}
-        <div>
-          <p className="text-sm text-slate-300">4. Ligen auswählen:</p>
-          <div className="grid lg:grid-cols-2 gap-4 text-sm">
-            {Object.entries(LEAGUES).map(([groupKey, leagues]) => (
-              <div
-                key={groupKey}
-                className="border border-slate-800 rounded-lg p-3"
-              >
-                <div className="font-semibold mb-2">{groupKey}</div>
-
-                {leagues.map((lg) => (
-                  <label
-                    key={`${groupKey}-${lg.id}-${lg.name}`}
-                    className="flex items-center gap-2 text-slate-300"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedLeagueIds.includes(lg.id)}
-                      onChange={() => toggleLeague(lg.id)}
-                    />
-                    {lg.name}
-                    {lg.id === 0 && (
-                      <span className="text-[10px] text-amber-400">
-                        (ID wird per Auto-Fix gesetzt)
-                      </span>
-                    )}
-                  </label>
-                ))}
-              </div>
-            ))}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm text-slate-300">4. Ligen auswählen:</p>
+            <input
+              type="text"
+              value={leagueSearch}
+              onChange={(e) => setLeagueSearch(e.target.value)}
+              placeholder="Länder / Ligen filtern…"
+              className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm w-64"
+            />
           </div>
+
+          {leaguesLoading && (
+            <p className="text-xs text-slate-400">Lade Ligen…</p>
+          )}
+
+          {!leaguesLoading && (
+            <div className="grid lg:grid-cols-2 gap-4 text-sm max-h-[400px] overflow-auto pr-2">
+              {Object.entries(groupedLeagues).map(([country, leagues]) => (
+                <div
+                  key={country}
+                  className="border border-slate-800 rounded-lg p-3"
+                >
+                  <div className="font-semibold mb-2">{country}</div>
+                  {leagues.map((lg) => (
+                    <label
+                      key={lg.id}
+                      className="flex items-center gap-2 text-slate-300"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedLeagueIds.includes(lg.id)}
+                        onChange={() => toggleLeague(lg.id)}
+                      />
+                      {lg.name}
+                    </label>
+                  ))}
+                </div>
+              ))}
+              {Object.keys(groupedLeagues).length === 0 && (
+                <p className="text-xs text-slate-400">
+                  Keine Ligen für diesen Filter gefunden.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Status */}
@@ -680,7 +649,7 @@ export default function AdminSeedPage() {
         )}
 
         {/* Buttons */}
-        <div className="flex flex-wrap gap-4">
+        <div className="flex gap-4">
           <button
             onClick={importFromApi}
             disabled={loading}
@@ -694,16 +663,6 @@ export default function AdminSeedPage() {
             className="bg-red-500 hover:bg-red-400 px-4 py-2 rounded font-semibold text-slate-900"
           >
             Datenbank leeren
-          </button>
-
-          <button
-            onClick={autoFixLeagueIds}
-            disabled={fixingLeagues}
-            className="bg-blue-500 hover:bg-blue-400 px-4 py-2 rounded font-semibold text-slate-900 disabled:opacity-50"
-          >
-            {fixingLeagues
-              ? "Ligen werden abgeglichen…"
-              : "Liga-IDs per API-Football → Firestore"}
           </button>
         </div>
       </div>

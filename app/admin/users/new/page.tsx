@@ -1,14 +1,14 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { db } from "@/lib/firebase";
-import {
-  doc,
-  setDoc,
-} from "firebase/firestore";
+import { db, auth } from "@/lib/firebase";
+import { doc, setDoc } from "firebase/firestore";
 import { createUserWithEmailAndPassword } from "firebase/auth";
-import { auth } from "@/lib/firebase";
 
 export default function NewUserPage() {
   const router = useRouter();
@@ -21,6 +21,7 @@ export default function NewUserPage() {
   const [saving, setSaving] = useState(false);
 
   const createUser = async () => {
+    if (saving) return; // Schutz gegen Doppel-Klick
     setError(null);
 
     if (!email || !password) {
@@ -28,30 +29,54 @@ export default function NewUserPage() {
       return;
     }
 
+    if (password.length < 6) {
+      setError("Das Passwort muss mindestens 6 Zeichen lang sein.");
+      return;
+    }
+
     try {
       setSaving(true);
 
-      // 1️⃣ Neuen User in Firebase Authentication erstellen
+      // ⛔ Nur im Browser – aber Component ist 'use client', daher sicher
       const cred = await createUserWithEmailAndPassword(auth, email, password);
       const uid = cred.user.uid;
 
-      // 2️⃣ User-Daten in Firestore speichern
-      await setDoc(doc(db, "users", uid), {
-        email,
-        createdAt: Date.now(),
-      });
+      // Firestore: User + Rolle speichern (parallel)
+      await Promise.all([
+        setDoc(doc(db, "users", uid), {
+          email,
+          createdAt: Date.now(),
+        }),
 
-      // 3️⃣ Rolle in Firestore speichern
-      await setDoc(doc(db, "userRoles", uid), {
-        role,
-      });
+        setDoc(doc(db, "userRoles", uid), {
+          role,
+        }),
+      ]);
 
       alert("Benutzer erfolgreich erstellt.");
       router.push("/admin/users");
 
     } catch (err: any) {
-      console.error(err);
-      setError(err.message ?? "Fehler beim Erstellen des Benutzers.");
+      console.error("Firebase Error:", err);
+
+      let msg = "Fehler beim Erstellen des Benutzers.";
+
+      switch (err?.code) {
+        case "auth/email-already-in-use":
+          msg = "Diese E-Mail wird bereits verwendet.";
+          break;
+        case "auth/invalid-email":
+          msg = "Die E-Mail-Adresse ist ungültig.";
+          break;
+        case "auth/weak-password":
+          msg = "Passwort ist zu schwach.";
+          break;
+        default:
+          msg = err?.message || msg;
+      }
+
+      setError(msg);
+
     } finally {
       setSaving(false);
     }
@@ -85,7 +110,6 @@ export default function NewUserPage() {
 
         <div>
           <label className="text-sm text-slate-300">Rolle</label>
-
           <select
             value={role}
             onChange={(e) => setRole(e.target.value)}
@@ -106,6 +130,7 @@ export default function NewUserPage() {
         >
           {saving ? "Erstelle Benutzer…" : "Benutzer erstellen"}
         </button>
+
       </div>
     </div>
   );

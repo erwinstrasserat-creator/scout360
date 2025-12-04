@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
@@ -15,6 +19,12 @@ export default function ReportDetailPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // ⛔ verhindert SSR-Firestore-Zugriffe beim Build
+    if (typeof window === "undefined") {
+      setLoading(false);
+      return;
+    }
+
     if (!id) return;
 
     const loadReport = async () => {
@@ -23,7 +33,7 @@ export default function ReportDetailPage() {
         const snap = await getDoc(ref);
 
         if (snap.exists()) {
-          setReport(snap.data());
+          setReport({ id: snap.id, ...snap.data() });
         } else {
           setReport(null);
         }

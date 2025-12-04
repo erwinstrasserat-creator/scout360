@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useEffect, useState, ChangeEvent, FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -21,16 +25,24 @@ export default function EditPlayerPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  // -------------------------------------------------------
-  // Load player
-  // -------------------------------------------------------
+  /* -------------------------------------------------------
+     Spieler laden
+  ------------------------------------------------------- */
   useEffect(() => {
+    if (!id) return;
+
+    // ⛔ Firestore darf nicht im Build ausgeführt werden
+    if (typeof window === "undefined") return;
+
     const loadPlayer = async () => {
-      const snap = await getDoc(doc(db, "players", id as string));
-      if (snap.exists()) {
-        setPlayer({ id: snap.id, ...(snap.data() as Player) });
+      try {
+        const snap = await getDoc(doc(db, "players", id as string));
+        if (snap.exists()) {
+          setPlayer({ id: snap.id, ...(snap.data() as Player) });
+        }
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     loadPlayer();
@@ -52,11 +64,15 @@ export default function EditPlayerPage() {
     });
   };
 
-  // -------------------------------------------------------
-  // Image Upload
-  // -------------------------------------------------------
+  /* -------------------------------------------------------
+     Bild-Upload
+  ------------------------------------------------------- */
   const handleImageUpload = async (e: ChangeEvent<HTMLInputElement>) => {
     if (!player) return;
+
+    // ⛔ Nur im Browser
+    if (typeof window === "undefined") return;
+
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -78,12 +94,15 @@ export default function EditPlayerPage() {
     }
   };
 
-  // -------------------------------------------------------
-  // Save Player
-  // -------------------------------------------------------
+  /* -------------------------------------------------------
+     Speichern
+  ------------------------------------------------------- */
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!player) return;
+
+    // ⛔ Sicherheit: nie im Build
+    if (typeof window === "undefined") return;
 
     setSaving(true);
     setStatus("Speichere Änderungen...");
@@ -99,6 +118,9 @@ export default function EditPlayerPage() {
     }
   };
 
+  /* -------------------------------------------------------
+     UI
+  ------------------------------------------------------- */
   if (loading) {
     return <main className="p-6 text-slate-400">Spieler wird geladen…</main>;
   }
@@ -111,11 +133,8 @@ export default function EditPlayerPage() {
     <main className="space-y-6">
       <h1 className="text-xl font-semibold">Spieler bearbeiten</h1>
 
-      {/* Status */}
       {status && (
-        <p className="text-sm text-emerald-400">
-          {status}
-        </p>
+        <p className="text-sm text-emerald-400">{status}</p>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-8">
@@ -148,8 +167,8 @@ export default function EditPlayerPage() {
             <NumberInput label="Defensiv" value={player.stats.defensiv} onChange={(v) => updateStat("defensiv", v)} />
             <NumberInput label="Offensiv" value={player.stats.offensiv} onChange={(v) => updateStat("offensiv", v)} />
 
-            <NumberInput label="Potenzial (0-100)" value={player.potentialRating} onChange={(v) => updateField("potentialRating", v)} />
-            <NumberInput label="Gesamtbewertung (optional)" value={player.overallRating || 0} onChange={(v) => updateField("overallRating", v)} />
+            <NumberInput label="Potenzial (0–100)" value={player.potentialRating} onChange={(v) => updateField("potentialRating", v)} />
+            <NumberInput label="Gesamtbewertung" value={player.overallRating || 0} onChange={(v) => updateField("overallRating", v)} />
           </div>
         </section>
 
@@ -173,7 +192,6 @@ export default function EditPlayerPage() {
         {/* MARKTWERT */}
         <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
           <h2 className="text-lg font-semibold">Marktwert</h2>
-
           <Input label="Marktwert (€)" type="number" value={player.marketValue || ""} onChange={(v) => updateField("marketValue", Number(v))} />
           <Input label="Quelle" value={player.marketValueSource || ""} onChange={(v) => updateField("marketValueSource", v)} />
           <Input label="Quelle URL" value={player.marketValueUrl || ""} onChange={(v) => updateField("marketValueUrl", v)} />
@@ -182,7 +200,6 @@ export default function EditPlayerPage() {
         {/* AGENTUR */}
         <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
           <h2 className="text-lg font-semibold">Management / Agentur</h2>
-
           <Input label="Agentur" value={player.agency || ""} onChange={(v) => updateField("agency", v)} />
           <Input label="Agentur URL" value={player.agencyUrl || ""} onChange={(v) => updateField("agencyUrl", v)} />
         </section>
@@ -217,7 +234,7 @@ export default function EditPlayerPage() {
 }
 
 /* --------------------------------------------------------
-   Small helper components
+   Helper Components
 -------------------------------------------------------- */
 
 function Input({
@@ -254,12 +271,7 @@ function NumberInput({
   onChange: (value: number) => void;
 }) {
   return (
-    <Input
-      label={label}
-      type="number"
-      value={value}
-      onChange={(v) => onChange(Number(v))}
-    />
+    <Input label={label} type="number" value={value} onChange={(v) => onChange(Number(v))} />
   );
 }
 

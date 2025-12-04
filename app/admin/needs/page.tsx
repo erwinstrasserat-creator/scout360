@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
@@ -10,6 +14,9 @@ export default function NeedsPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // ⛔ verhindert Firestore-Zugriff beim Next.js-Build
+    if (typeof window === "undefined") return;
+
     const loadNeeds = async () => {
       try {
         const ref = collection(db, "needs");
@@ -21,6 +28,8 @@ export default function NeedsPage() {
         }));
 
         setNeeds(list);
+      } catch (err) {
+        console.error("Fehler beim Laden der Needs:", err);
       } finally {
         setLoading(false);
       }
@@ -34,7 +43,6 @@ export default function NeedsPage() {
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Club Needs</h1>
 
-        {/* Button neue Need */}
         <Link
           href="/admin/needs/new"
           className="rounded-lg bg-emerald-500 text-slate-900 px-4 py-2 font-semibold hover:bg-emerald-400 transition"
@@ -48,7 +56,9 @@ export default function NeedsPage() {
       )}
 
       {!loading && needs.length === 0 && (
-        <div className="text-slate-500 text-sm">Keine Bedarfsliste vorhanden.</div>
+        <div className="text-slate-500 text-sm">
+          Keine Bedarfsliste vorhanden.
+        </div>
       )}
 
       <div className="grid gap-3">

@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useState, FormEvent } from "react";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../../../lib/firebase";
@@ -21,6 +25,9 @@ export default function NewClubPage() {
       setStatus("Bitte Vereinsnamen eingeben.");
       return;
     }
+
+    // ⛔ Firestore darf nie im Build laufen!
+    if (typeof window === "undefined") return;
 
     setSaving(true);
     setStatus("Speichere Verein...");
@@ -46,12 +53,9 @@ export default function NewClubPage() {
     <main className="space-y-6">
       <h1 className="text-xl font-semibold">Neuen Verein anlegen</h1>
 
-      {status && (
-        <p className="text-sm text-emerald-400">{status}</p>
-      )}
+      {status && <p className="text-sm text-emerald-400">{status}</p>}
 
       <form onSubmit={handleSubmit} className="space-y-4 text-sm">
-
         <div className="flex flex-col">
           <label className="text-xs text-slate-400">Vereinsname</label>
           <input

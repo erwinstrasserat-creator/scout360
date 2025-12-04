@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
@@ -15,6 +19,12 @@ export default function PlayerDetailPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // ⛔ verhindert SSR-Firestore-Zugriff
+    if (typeof window === "undefined") {
+      setLoading(false);
+      return;
+    }
+
     if (!playerId) return;
 
     const loadPlayer = async () => {
@@ -23,7 +33,7 @@ export default function PlayerDetailPage() {
         const snap = await getDoc(ref);
 
         if (snap.exists()) {
-          setPlayer(snap.data());
+          setPlayer({ id: snap.id, ...snap.data() });
         } else {
           setPlayer(null);
         }
@@ -66,7 +76,8 @@ export default function PlayerDetailPage() {
         </div>
 
         <div className="text-sm text-slate-400">
-          <b>Größe:</b> {player.height ? `${player.height} cm` : "-"}
+          <b>Größe:</b> 
+          {player.heightCm ? `${player.heightCm} cm` : "-"}
         </div>
 
         <div className="text-sm text-slate-400">
@@ -78,7 +89,7 @@ export default function PlayerDetailPage() {
         </div>
 
         <div className="text-sm text-slate-400">
-          <b>Preferred Foot:</b> {player.preferredFoot ?? "-"}
+          <b>Preferred Foot:</b> {player.foot ?? "-"}
         </div>
 
         <div>
@@ -88,9 +99,15 @@ export default function PlayerDetailPage() {
           </pre>
         </div>
 
-        {player.traits && (
+        {player.strengths && (
           <div className="text-sm text-slate-400">
-            <b>Traits:</b> {player.traits.join(", ")}
+            <b>Stärken:</b> {player.strengths.join(", ")}
+          </div>
+        )}
+
+        {player.weaknesses && (
+          <div className="text-sm text-slate-400">
+            <b>Schwächen:</b> {player.weaknesses.join(", ")}
           </div>
         )}
 

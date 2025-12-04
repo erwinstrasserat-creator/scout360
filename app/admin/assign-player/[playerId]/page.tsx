@@ -1,5 +1,9 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
+
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { db } from "@/lib/firebase";
@@ -89,7 +93,6 @@ export default function AssignPlayerPage() {
       <h1 className="text-2xl font-bold">Need zuweisen</h1>
 
       <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-4">
-
         <div>
           <div className="font-semibold text-lg">{player.name}</div>
           <div className="text-sm text-slate-400">
@@ -98,9 +101,7 @@ export default function AssignPlayerPage() {
         </div>
 
         <label className="block">
-          <span className="text-sm text-slate-300">
-            Need auswählen
-          </span>
+          <span className="text-sm text-slate-300">Need auswählen</span>
 
           <select
             value={selectedNeed}
