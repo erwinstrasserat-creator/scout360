@@ -46,6 +46,44 @@ function parseHeightToCm(height: string | undefined | null): number | null {
   return isNaN(parsed) ? null : parsed;
 }
 
+/** Safe number helper */
+function num(v: any): number {
+  const n = Number(v);
+  return isNaN(n) ? 0 : n;
+}
+
+/** Auf 0–100 clampen */
+function clamp100(x: number): number {
+  if (!isFinite(x)) return 0;
+  return Math.max(0, Math.min(100, x));
+}
+
+/** Rate → 0–100 normalisieren (x pro 90 min, top = typischer Maximalwert) */
+function normalizeRatePer90(valuePer90: number, top: number): number {
+  if (top <= 0) return 0;
+  return clamp100((valuePer90 / top) * 100);
+}
+
+/** Prozentwert (0–1 oder 0–100) → 0–100 */
+function normalizePercent(value: number): number {
+  if (!isFinite(value) || value <= 0) return 0;
+  if (value <= 1) return clamp100(value * 100);
+  return clamp100(value);
+}
+
+/** Durchschnitt aus Komponenten */
+function avg(values: number[]): number {
+  const valid = values.filter((v) => v > 0);
+  if (!valid.length) return 0;
+  return clamp100(valid.reduce((a, b) => a + b, 0) / valid.length);
+}
+
+/** inkl. Minuten → Wert pro 90 Minuten */
+function per90(value: number, minutes: number): number {
+  if (!minutes || minutes <= 0) return 0;
+  return (value * 90) / minutes;
+}
+
 /** Leihstatus aus Transfers extrahieren */
 function extractLoanInfo(transfers: any[]): {
   onLoan: boolean;
@@ -56,7 +94,6 @@ function extractLoanInfo(transfers: any[]): {
   for (const t of transfers) {
     if (t.type && typeof t.type === "string") {
       if (t.type.toLowerCase().includes("loan")) {
-        // Achtung: Struktur kann variieren – hier einfache Heuristik
         return {
           onLoan: true,
           loanFrom: t.teams?.in?.name ?? null,
@@ -66,6 +103,132 @@ function extractLoanInfo(transfers: any[]): {
   }
 
   return { onLoan: false, loanFrom: null };
+}
+
+/** Scouting-Stats 0–100 aus API-Football-Statistik berechnen */
+function buildScoutingStats(stat: any | null): {
+  offensiv: number | null;
+  defensiv: number | null;
+  intelligenz: number | null;
+  physis: number | null;
+  technik: number | null;
+  tempo: number | null;
+} {
+  if (!stat) {
+    return {
+      offensiv: null,
+      defensiv: null,
+      intelligenz: null,
+      physis: null,
+      technik: null,
+      tempo: null,
+    };
+  }
+
+  const games = stat.games || {};
+  const goals = stat.goals || {};
+  const shots = stat.shots || {};
+  const passes = stat.passes || {};
+  const tackles = stat.tackles || {};
+  const duels = stat.duels || {};
+  const dribbles = stat.dribbles || {};
+  const fouls = stat.fouls || {};
+  const cards = stat.cards || {};
+
+  const minutes = num(games.minutes) || num(games.appearences) * 60;
+
+  // Basiswerte
+  const g = num(goals.total);
+  const a = num(goals.assists);
+  const shotsTotal = num(shots.total);
+  const shotsOn = num(shots.on);
+  const keyPasses = num(passes.key);
+  const passAcc = num(passes.accuracy); // meist 0–100
+  const tacklesTotal = num(tackles.total);
+  const interceptions = num(tackles.interceptions);
+  const duelsTotal = num(duels.total);
+  const duelsWon = num(duels.won);
+  const dribAttempts = num(dribbles.attempts);
+  const dribSuccess = num(dribbles.success);
+  const foulsCommitted = num(fouls.committed);
+  const foulsDrawn = num(fouls.drawn);
+  const yellow = num(cards.yellow);
+  const red = num(cards.red);
+
+  const g90 = per90(g, minutes);
+  const a90 = per90(a, minutes);
+  const shotsOn90 = per90(shotsOn, minutes);
+  const kp90 = per90(keyPasses, minutes);
+  const tackles90 = per90(tacklesTotal, minutes);
+  const inter90 = per90(interceptions, minutes);
+  const duels90 = per90(duelsTotal, minutes);
+  const duelsWon90 = per90(duelsWon, minutes);
+  const foulsComm90 = per90(foulsCommitted, minutes);
+  const foulsDrawn90 = per90(foulsDrawn, minutes);
+
+  const dribbleSuccessRate =
+    dribAttempts > 0 ? dribSuccess / dribAttempts : 0;
+
+  const duelWinRate =
+    duelsTotal > 0 ? duelsWon / duelsTotal : 0;
+
+  // ► Offensiv
+  const offensiv = avg([
+    normalizeRatePer90(g90, 0.8), // 0,8 Tore / 90 = sehr gut
+    normalizeRatePer90(a90, 0.6),
+    normalizeRatePer90(shotsOn90, 3),
+    normalizeRatePer90(kp90, 2),
+    normalizePercent(dribbleSuccessRate),
+  ]);
+
+  // ► Defensiv
+  const defensiv = avg([
+    normalizeRatePer90(tackles90, 4),    // 4 Tackles / 90
+    normalizeRatePer90(inter90, 3),
+    normalizeRatePer90(duelsWon90, 8),
+  ]);
+
+  // ► Intelligenz
+  // Mischung aus Key-Pässen, Passqualität und Karten-Disziplin
+  const cardsPer90 = per90(yellow + red * 2, minutes);
+  const discipline = clamp100(100 - normalizeRatePer90(cardsPer90, 0.8)); // weniger Karten = besser
+
+  const intelligenz = avg([
+    normalizeRatePer90(kp90, 2.5),
+    normalizePercent(passAcc),
+    discipline,
+  ]);
+
+  // ► Physis
+  const physis = avg([
+    normalizeRatePer90(duels90, 15),
+    normalizeRatePer90(foulsComm90, 3),
+  ]);
+
+  // ► Technik
+  const technik = avg([
+    normalizePercent(passAcc),
+    normalizePercent(dribbleSuccessRate),
+    normalizeRatePer90(kp90, 2.5),
+  ]);
+
+  // ► Tempo
+  // API-Football hat keine echte Geschwindigkeit, wir nähern über
+  // Dribblings + Offensiv-Aktivität
+  const tempo = avg([
+    normalizePercent(dribbleSuccessRate),
+    normalizeRatePer90(dribAttempts ? per90(dribAttempts, minutes) : 0, 6),
+    normalizeRatePer90(shotsOn90, 3),
+  ]);
+
+  return {
+    offensiv: offensiv || null,
+    defensiv: defensiv || null,
+    intelligenz: intelligenz || null,
+    physis: physis || null,
+    technik: technik || null,
+    tempo: tempo || null,
+  };
 }
 
 /**
@@ -137,6 +300,8 @@ export async function POST(req: NextRequest) {
 
             const loan = extractLoanInfo(p.transfers ?? []);
 
+            const scoutingStats = buildScoutingStats(stats);
+
             const playerObj = {
               apiId: p.id,
               name: p.name ?? null,
@@ -147,6 +312,9 @@ export async function POST(req: NextRequest) {
               league: stats?.league?.name ?? null,
               club: stats?.team?.name ?? null,
 
+              // Neues Feld: Foto
+              photo: p.photo ?? null,
+
               // Loan-Infos
               onLoan: loan.onLoan,
               loanFrom: loan.loanFrom,
@@ -154,15 +322,8 @@ export async function POST(req: NextRequest) {
               // Marktwert wird später im Admin manuell gesetzt
               marketValue: null as number | null,
 
-              // Stats – Platzhalter
-              stats: {
-                offensiv: null as number | null,
-                defensiv: null as number | null,
-                intelligenz: null as number | null,
-                physis: null as number | null,
-                technik: null as number | null,
-                tempo: null as number | null,
-              },
+              // Scouting-Stats 0–100
+              stats: scoutingStats,
 
               traits: [] as string[],
             };

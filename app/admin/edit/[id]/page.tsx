@@ -1,4 +1,5 @@
 "use client";
+console.log("### EDIT PAGE LOADED ###");
 
 import { useEffect, useState, ChangeEvent, FormEvent } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -80,7 +81,9 @@ export default function EditPlayerPage() {
       await uploadBytes(storageRef, file);
       const url = await getDownloadURL(storageRef);
 
-      setPlayer({ ...player, imageUrl: url });
+      // Wichtig: safer State-Update für TS
+      setPlayer(prev => (prev ? { ...prev, imageUrl: url } : prev));
+
       setStatus("Bild erfolgreich hochgeladen!");
     } catch (err) {
       console.error(err);

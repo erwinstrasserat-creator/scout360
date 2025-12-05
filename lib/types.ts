@@ -4,53 +4,64 @@
 export type Foot = "links" | "rechts" | "beidfüßig";
 
 // ---------------------------------------------------------
-// PLAYER STATS
+// PLAYER STATS (0–100)
 // ---------------------------------------------------------
 export interface PlayerStats {
-  technik: number;       // 0-100
-  tempo: number;         // 0-100
-  physis: number;        // 0-100
-  intelligenz: number;   // 0-100
-  defensiv: number;      // 0-100
-  offensiv: number;      // 0-100
+  technik: number;       
+  tempo: number;         
+  physis: number;        
+  intelligenz: number;   
+  defensiv: number;      
+  offensiv: number;      
 }
 
 // ---------------------------------------------------------
-// PLAYER MODEL
+// PLAYER MODEL – angepasst für API-Football Import
 // ---------------------------------------------------------
 export interface Player {
-  id: string;
+  id?: string;              // Firestore-ID optional
 
   // Basisdaten
+  apiId?: number;           // API-Football-ID
   name: string;
-  age: number;
-  nationality: string;
-  club: string;
-  league: string;
-  position: string;
-  foot: Foot;
-  heightCm?: number;
+  age: number | null;
+  nationality?: string | null;
+  club: string | null;
+  league: string | null;
+  position: string | null;
+  foot: Foot | null;
+  heightCm?: number | null;
 
   // Scouting
-  strengths: string[];
-  weaknesses: string[];
+  strengths?: string[];     
+  weaknesses?: string[];
 
   // Ratings
-  potentialRating: number;
-  overallRating?: number; // optionaler Gesamtwert 0–100
+  potentialRating?: number;
+  overallRating?: number; 
 
-  // Detail-Stats (Radar)
+  // Detail-Stats (Radar / Spider)
   stats: PlayerStats;
 
-  // Marktwert & Management
-  marketValue?: number;
+  // Marktwert
+  marketValue?: number | null;
   marketValueSource?: string;
   marketValueUrl?: string;
   agency?: string;
   agencyUrl?: string;
 
-  // Bild
-  imageUrl?: string;
+  // Bild vom API-Football
+  photo?: string | null;
+
+  // ⚠️ NEU (für hochgeladenes Profilbild / Edit Player Page)
+  imageUrl?: string | null;
+
+  // Loan
+  onLoan?: boolean;
+  loanFrom?: string | null;
+
+  // Traits
+  traits?: string[];
 }
 
 // ---------------------------------------------------------
@@ -61,13 +72,13 @@ export interface PlayerVideo {
   playerId: string;
   title: string;
   url: string;
-  source?: string;      // z.B. "YouTube"
-  createdAt?: number;   // Unix-Timestamp
+  source?: string;
+  createdAt?: number;
   addedByUid?: string;
 }
 
 // ---------------------------------------------------------
-// FAVORIT eines Videos (pro User)
+// FAVORIT eines Videos
 // ---------------------------------------------------------
 export interface VideoFavorite {
   id: string;
@@ -102,24 +113,18 @@ export interface ClubNeed {
 
   position: string;
 
-  // Altersrange
   minAge?: number;
   maxAge?: number;
 
-  // Größenanforderung
   heightMin?: number;
   heightMax?: number;
 
-  // Wie viel unter Mindest-Stat erlaubt (%)
   tolerance: number;
 
-  // Bevorzugter Fuß (oder egal)
   preferredFoot?: Foot | "egal";
 
-  // Gesuchte Merkmale (z.B. "Kopfballstark", "Schnell")
   requiredTraits: string[];
 
-  // Mindest-Stats pro Kategorie
   minStats?: Partial<PlayerStats>;
 
   notes?: string;
@@ -143,29 +148,22 @@ export interface NeedAssignment {
 export interface ScoutingReport {
   id: string;
 
-  // Spieler
   playerId: string;
 
-  // Autor
-  createdBy: string;        // UID des Users
-  createdByEmail: string;   // E-Mail
+  createdBy: string;
+  createdByEmail: string;
   createdAt: number;
 
-  // Matchdaten
-  matchDate?: string;       // "2025-03-31"
+  matchDate?: string;
   opponent?: string;
   competition?: string;
   minutesObserved?: number | null;
 
-  // Bewertung gesamt (1–5)
   rating: number;
 
-  // Form
   currentForm: "sehr gut" | "gut" | "durchschnittlich" | "schwach";
 
-  // Empfehlung
   recommendation: "sofort verpflichten" | "beobachten" | "nicht geeignet";
 
-  // Freitext
   notes: string;
 }
