@@ -1,17 +1,13 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
-export const revalidate = 0;
-
-import { useEffect, useState, FormEvent } from "react";
+import { Suspense, useEffect, useState, FormEvent } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { doc, getDoc, addDoc, collection } from "firebase/firestore";
 import { db } from "../../../../lib/firebase";
 import { useAuth } from "../../../../context/AuthContext";
 import type { Player } from "../../../../lib/types";
 
-export default function NewReportPage() {
+function NewReportForm() {
   const params = useSearchParams();
   const router = useRouter();
   const { user } = useAuth() as any;
@@ -23,7 +19,6 @@ export default function NewReportPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-  // Formularfelder
   const [matchDate, setMatchDate] = useState("");
   const [opponent, setOpponent] = useState("");
   const [competition, setCompetition] = useState("");
@@ -35,13 +30,8 @@ export default function NewReportPage() {
 
   const [notes, setNotes] = useState("");
 
-  // Spieler laden – aber nur im Browser
   useEffect(() => {
-    // ⛔ verhindert SSR-Firestore-Zugriff!
-    if (typeof window === "undefined") {
-      setLoading(false);
-      return;
-    }
+    if (typeof window === "undefined") return;
 
     if (!playerId) return;
 
@@ -61,7 +51,6 @@ export default function NewReportPage() {
     load();
   }, [playerId]);
 
-  // Speichern
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (!user || !playerId) return;
@@ -92,7 +81,7 @@ export default function NewReportPage() {
 
       setTimeout(() => {
         router.push(`/players/${playerId}`);
-      }, 1000);
+      }, 800);
     } catch (e) {
       console.error(e);
       setStatus("Fehler beim Speichern.");
@@ -101,21 +90,8 @@ export default function NewReportPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <main className="p-6 text-slate-400">
-        Spieler wird geladen...
-      </main>
-    );
-  }
-
-  if (!player) {
-    return (
-      <main className="p-6 text-red-400">
-        Spieler nicht gefunden.
-      </main>
-    );
-  }
+  if (loading) return <main className="p-6">Spieler wird geladen…</main>;
+  if (!player) return <main className="p-6 text-red-400">Spieler nicht gefunden.</main>;
 
   return (
     <main className="space-y-6">
@@ -126,114 +102,90 @@ export default function NewReportPage() {
       {status && <p className="text-emerald-400">{status}</p>}
 
       <form className="space-y-5" onSubmit={submit}>
+
         {/* Matchdaten */}
         <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
           <h2 className="text-lg font-semibold">Matchdaten</h2>
 
-          <div className="flex flex-col">
-            <label className="text-xs text-slate-400">Datum</label>
-            <input
-              type="date"
-              value={matchDate}
-              onChange={(e) => setMatchDate(e.target.value)}
-              className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1"
-            />
-          </div>
+          <input
+            type="date"
+            value={matchDate}
+            onChange={(e) => setMatchDate(e.target.value)}
+            className="w-full rounded bg-slate-950 border border-slate-700 px-2 py-1"
+          />
 
-          <div className="flex flex-col">
-            <label className="text-xs text-slate-400">Gegner</label>
-            <input
-              value={opponent}
-              onChange={(e) => setOpponent(e.target.value)}
-              className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1"
-            />
-          </div>
+          <input
+            value={opponent}
+            onChange={(e) => setOpponent(e.target.value)}
+            className="w-full rounded bg-slate-950 border border-slate-700 px-2 py-1"
+            placeholder="Gegner"
+          />
 
-          <div className="flex flex-col">
-            <label className="text-xs text-slate-400">Wettbewerb</label>
-            <input
-              value={competition}
-              onChange={(e) => setCompetition(e.target.value)}
-              className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1"
-            />
-          </div>
+          <input
+            value={competition}
+            onChange={(e) => setCompetition(e.target.value)}
+            className="w-full rounded bg-slate-950 border border-slate-700 px-2 py-1"
+            placeholder="Wettbewerb"
+          />
 
-          <div className="flex flex-col">
-            <label className="text-xs text-slate-400">Minuten beobachtet</label>
-            <input
-              type="number"
-              min={0}
-              max={120}
-              value={minutesObserved}
-              onChange={(e) =>
-                setMinutesObserved(
-                  e.target.value === "" ? "" : Number(e.target.value)
-                )
-              }
-              className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1"
-            />
-          </div>
+          <input
+            type="number"
+            min={0}
+            max={120}
+            value={minutesObserved}
+            onChange={(e) =>
+              setMinutesObserved(
+                e.target.value === "" ? "" : Number(e.target.value)
+              )
+            }
+            className="w-full rounded bg-slate-950 border border-slate-700 px-2 py-1"
+            placeholder="Minuten beobachtet"
+          />
         </section>
 
         {/* Bewertung */}
         <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
           <h2 className="text-lg font-semibold">Bewertung</h2>
 
-          <div className="flex flex-col">
-            <label className="text-xs text-slate-400">Gesamtbewertung</label>
-            <select
-              value={rating}
-              onChange={(e) => setRating(Number(e.target.value))}
-              className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1"
-            >
-              {[1, 2, 3, 4, 5].map((r) => (
-                <option key={r} value={r}>
-                  {r} Sterne
-                </option>
-              ))}
-            </select>
-          </div>
+          <select
+            value={rating}
+            onChange={(e) => setRating(Number(e.target.value))}
+            className="w-full rounded bg-slate-950 border border-slate-700 px-2 py-1"
+          >
+            {[1, 2, 3, 4, 5].map((r) => (
+              <option key={r} value={r}>{r} Sterne</option>
+            ))}
+          </select>
 
-          <div className="flex flex-col">
-            <label className="text-xs text-slate-400">Form</label>
-            <select
-              value={currentForm}
-              onChange={(e) => setCurrentForm(e.target.value)}
-              className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1"
-            >
-              <option>sehr gut</option>
-              <option>gut</option>
-              <option>durchschnittlich</option>
-              <option>schwach</option>
-            </select>
-          </div>
+          <select
+            value={currentForm}
+            onChange={(e) => setCurrentForm(e.target.value)}
+            className="w-full rounded bg-slate-950 border border-slate-700 px-2 py-1"
+          >
+            <option>sehr gut</option>
+            <option>gut</option>
+            <option>durchschnittlich</option>
+            <option>schwach</option>
+          </select>
 
-          <div className="flex flex-col">
-            <label className="text-xs text-slate-400">Empfehlung</label>
-            <select
-              value={recommendation}
-              onChange={(e) => setRecommendation(e.target.value)}
-              className="rounded-lg bg-slate-950 border border-slate-700 px-2 py-1"
-            >
-              <option value="sofort verpflichten">sofort verpflichten</option>
-              <option value="beobachten">beobachten</option>
-              <option value="nicht geeignet">nicht geeignet</option>
-            </select>
-          </div>
+          <select
+            value={recommendation}
+            onChange={(e) => setRecommendation(e.target.value)}
+            className="w-full rounded bg-slate-950 border border-slate-700 px-2 py-1"
+          >
+            <option value="sofort verpflichten">sofort verpflichten</option>
+            <option value="beobachten">beobachten</option>
+            <option value="nicht geeignet">nicht geeignet</option>
+          </select>
         </section>
 
-        {/* Notes */}
-        <section className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-3">
-          <h2 className="text-lg font-semibold">Notizen</h2>
-
-          <textarea
-            rows={6}
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm"
-            placeholder="Detailanalyse, Verhalten im Spiel, Technik, Umschaltverhalten, etc."
-          />
-        </section>
+        <textarea
+          rows={6}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          className="w-full rounded bg-slate-950 border border-slate-700 px-3 py-2 text-sm"
+          placeholder="Notizen"
+        />
 
         <button
           type="submit"
@@ -244,5 +196,13 @@ export default function NewReportPage() {
         </button>
       </form>
     </main>
+  );
+}
+
+export default function NewReportPage() {
+  return (
+    <Suspense fallback={<main className="p-6">Lade Report-Form…</main>}>
+      <NewReportForm />
+    </Suspense>
   );
 }

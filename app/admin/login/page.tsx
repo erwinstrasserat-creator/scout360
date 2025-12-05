@@ -1,16 +1,12 @@
 "use client";
 
-export const dynamic = "force-dynamic";
-export const fetchCache = "force-no-store";
-export const revalidate = 0;
-
-import { FormEvent, useState } from "react";
+import { Suspense, FormEvent, useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
 import { doc, getDoc } from "firebase/firestore";
 import { useRouter, useSearchParams } from "next/navigation";
 
-export default function LoginPage() {
+function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -23,22 +19,18 @@ export default function LoginPage() {
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
 
-    // ⛔ Sicherheit: im Build niemals ausführen
     if (typeof window === "undefined") return;
 
     setError(null);
     setLoading(true);
 
     try {
-      // 1️⃣ Login via Firebase Auth
       const cred = await signInWithEmailAndPassword(auth, email, password);
       const uid = cred.user.uid;
 
-      // 2️⃣ Rolle aus Firestore laden
       const roleSnap = await getDoc(doc(db, "userRoles", uid));
       const role = roleSnap.exists() ? roleSnap.data().role : "none";
 
-      // 3️⃣ Cookies setzen (für Middleware)
       document.cookie = `auth=true; Path=/; Max-Age=86400; SameSite=None; Secure`;
       document.cookie = `role=${role}; Path=/; Max-Age=86400; SameSite=None; Secure`;
 
@@ -88,5 +80,13 @@ export default function LoginPage() {
         </button>
       </form>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="p-6">Lade Login…</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

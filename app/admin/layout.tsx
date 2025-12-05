@@ -1,5 +1,4 @@
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+"use client";
 
 import Link from "next/link";
 
@@ -14,29 +13,12 @@ export default function AdminLayout({
         <h1 className="text-xl font-semibold">Admin Bereich</h1>
 
         <div className="flex gap-4 text-sm">
-          <Link href="/admin" className="hover:text-emerald-400 transition">
-            Dashboard
-          </Link>
-
-          <Link href="/admin/players" className="hover:text-emerald-400 transition">
-            Spieler
-          </Link>
-
-          <Link href="/admin/needs" className="hover:text-emerald-400 transition">
-            Bedarfslisten
-          </Link>
-
-          <Link href="/admin/clubs" className="hover:text-emerald-400 transition">
-            Vereine
-          </Link>
-
-          <Link href="/admin/reports" className="hover:text-emerald-400 transition">
-            Reports
-          </Link>
-
-          <Link href="/admin/users" className="hover:text-emerald-400 transition">
-            Benutzerverwaltung
-          </Link>
+          <Link href="/admin">Dashboard</Link>
+          <Link href="/admin/players">Spieler</Link>
+          <Link href="/admin/needs">Bedarfslisten</Link>
+          <Link href="/admin/clubs">Vereine</Link>
+          <Link href="/admin/reports">Reports</Link>
+          <Link href="/admin/users">Benutzerverwaltung</Link>
         </div>
       </nav>
 
