@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium-min";
-import { adminDb } from "@/lib/firebaseAdmin";   // Admin SDK
+import { adminDb } from "@/lib/firebaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -14,8 +14,7 @@ async function generatePdf(html: string): Promise<Uint8Array> {
   const browser = await puppeteer.launch({
     executablePath: execPath,
     args: chromium.args,
-    headless: chromium.headless,   // <- wichtig für Vercel
-    // ❌ KEIN defaultViewport mehr!
+    headless: true,               // <- FIX: Nur TRUE verwenden!
   });
 
   const page = await browser.newPage();
@@ -45,7 +44,7 @@ export async function GET(req: Request, { params }: any) {
     const url = new URL(req.url);
     const includeReports = url.searchParams.get("reports") === "1";
 
-    // Player laden (Admin SDK → funktioniert auf Server, keine Rules nötig)
+    // Player laden (Admin SDK → keine Firestore-Regeln nötig)
     const snap = await adminDb.collection("players").doc(id).get();
 
     if (!snap.exists) {
