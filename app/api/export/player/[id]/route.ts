@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium-min";
-import { adminDb } from "@/lib/firebaseAdmin";   // <- Admin SDK
+import { adminDb } from "@/lib/firebaseAdmin";   // Admin SDK
 
 export const runtime = "nodejs";
 
@@ -13,9 +13,9 @@ async function generatePdf(html: string): Promise<Uint8Array> {
 
   const browser = await puppeteer.launch({
     executablePath: execPath,
-    headless: true,
     args: chromium.args,
-    defaultViewport: chromium.defaultViewport,
+    headless: chromium.headless,   // <- wichtig für Vercel
+    // ❌ KEIN defaultViewport mehr!
   });
 
   const page = await browser.newPage();
@@ -45,7 +45,7 @@ export async function GET(req: Request, { params }: any) {
     const url = new URL(req.url);
     const includeReports = url.searchParams.get("reports") === "1";
 
-    // Player laden (Admin SDK ➜ keine Permission Errors)
+    // Player laden (Admin SDK → funktioniert auf Server, keine Rules nötig)
     const snap = await adminDb.collection("players").doc(id).get();
 
     if (!snap.exists) {
@@ -65,25 +65,46 @@ export async function GET(req: Request, { params }: any) {
       reports = rs.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
 
+    // HTML Template
     const html = `
       <html>
-        <body style="font-family: Arial; padding: 24px;">
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; }
+            h1 { font-size: 24px; }
+            h2 { margin-top: 24px; }
+          </style>
+        </head>
+        <body>
           <h1>Spieler – ${player.name}</h1>
-          <p>Alter: ${player.age ?? "-"}</p>
-          <p>Verein: ${player.club ?? "-"}</p>
-          <p>Position: ${player.position ?? "-"}</p>
 
-          ${includeReports ? `
-            <h2>Reports</h2>
-            ${reports.map(r => `<p>${r.notes}</p>`).join("")}
-          ` : ""}
+          <p><b>Alter:</b> ${player.age ?? "-"}</p>
+          <p><b>Verein:</b> ${player.club ?? "-"}</p>
+          <p><b>Position:</b> ${player.position ?? "-"}</p>
+          <p><b>Größe:</b> ${player.heightCm ?? "-"} cm</p>
+
+          ${
+            includeReports
+              ? `
+                <h2>Reports</h2>
+                ${reports
+                  .map(
+                    (r) =>
+                      `<p><b>${new Date(r.createdAt).toLocaleDateString(
+                        "de-DE"
+                      )}:</b> ${r.notes}</p>`
+                  )
+                  .join("")}
+              `
+              : ""
+          }
         </body>
       </html>
     `;
 
     const pdfBytes = await generatePdf(html);
 
-    // 100% gültige PDF-Antwort
     return new NextResponse(pdfBytes, {
       headers: {
         "Content-Type": "application/pdf",
