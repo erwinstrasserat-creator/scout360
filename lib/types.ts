@@ -7,22 +7,22 @@ export type Foot = "links" | "rechts" | "beidfüßig";
 // PLAYER STATS (0–100)
 // ---------------------------------------------------------
 export interface PlayerStats {
-  technik: number;       
-  tempo: number;         
-  physis: number;        
-  intelligenz: number;   
-  defensiv: number;      
-  offensiv: number;      
+  technik: number;
+  tempo: number;
+  physis: number;
+  intelligenz: number;
+  defensiv: number;
+  offensiv: number;
 }
 
 // ---------------------------------------------------------
-// PLAYER MODEL – angepasst für API-Football Import
+// PLAYER MODEL – angepasst für API-Football Import + Admin
 // ---------------------------------------------------------
 export interface Player {
-  id?: string;              // Firestore-ID optional
+  id?: string; // Firestore-ID optional
 
   // Basisdaten
-  apiId?: number;           // API-Football-ID
+  apiId?: number; // API-Football-ID
   name: string;
   age: number | null;
   nationality?: string | null;
@@ -33,14 +33,14 @@ export interface Player {
   heightCm?: number | null;
 
   // Scouting
-  strengths?: string[];     
+  strengths?: string[];
   weaknesses?: string[];
 
   // Ratings
   potentialRating?: number;
-  overallRating?: number; 
+  overallRating?: number;
 
-  // Detail-Stats (Radar / Spider)
+  // Detail-Stats (Radar/Spider)
   stats: PlayerStats;
 
   // Marktwert
@@ -53,7 +53,7 @@ export interface Player {
   // Bild vom API-Football
   photo?: string | null;
 
-  // ⚠️ NEU (für hochgeladenes Profilbild / Edit Player Page)
+  // Bild vom Admin-Upload (Firebase Storage)
   imageUrl?: string | null;
 
   // Loan

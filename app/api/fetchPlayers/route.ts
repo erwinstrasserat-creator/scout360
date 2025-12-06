@@ -8,122 +8,95 @@ export const fetchCache = "force-no-store";
 
 const API_FOOTBALL_BASE = "https://v3.football.api-sports.io";
 
-/** Allgemeiner API-Football Fetch Wrapper */
+/* ─────────────────────────────────────────────── */
+/* Helper: API Request Wrapper                     */
+/* ─────────────────────────────────────────────── */
+
 async function apiFootballFetch(
   path: string,
   params: Record<string, string | number>
 ) {
   const apiKey = process.env.API_FOOTBALL_KEY;
-
-  if (!apiKey) {
-    throw new Error("API_FOOTBALL_KEY fehlt in .env.local / Vercel");
-  }
+  if (!apiKey) throw new Error("API_FOOTBALL_KEY fehlt");
 
   const url = new URL(API_FOOTBALL_BASE + path);
-  for (const [key, value] of Object.entries(params)) {
-    url.searchParams.set(key, String(value));
+  for (const [k, v] of Object.entries(params)) {
+    url.searchParams.set(k, String(v));
   }
 
-  const res = await fetch(url.toString(), {
-    headers: {
-      "x-apisports-key": apiKey,
-    },
+  const res = await fetch(url, {
+    headers: { "x-apisports-key": apiKey },
     cache: "no-store",
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API-Football error ${res.status}: ${text}`);
+    const txt = await res.text();
+    throw new Error(`API error ${res.status}: ${txt}`);
   }
 
   return res.json();
 }
 
-/** Höhe in cm parsen */
-function parseHeightToCm(height: string | undefined | null): number | null {
-  if (!height) return null;
-  const parsed = parseInt(height);
-  return isNaN(parsed) ? null : parsed;
+/* ─────────────────────────────────────────────── */
+/* Helpers                                         */
+/* ─────────────────────────────────────────────── */
+
+const num = (v: any) => (isNaN(Number(v)) ? 0 : Number(v));
+const clamp100 = (x: number) => Math.max(0, Math.min(100, isFinite(x) ? x : 0));
+
+function parseHeightToCm(h: string | null | undefined): number | null {
+  if (!h) return null;
+  const n = parseInt(h);
+  return isNaN(n) ? null : n;
 }
 
-/** Safe number helper */
-function num(v: any): number {
-  const n = Number(v);
-  return isNaN(n) ? 0 : n;
-}
+const per90 = (value: number, minutes: number) =>
+  minutes > 0 ? (value * 90) / minutes : 0;
 
-/** Auf 0–100 clampen */
-function clamp100(x: number): number {
-  if (!isFinite(x)) return 0;
-  return Math.max(0, Math.min(100, x));
-}
+const normalizeRatePer90 = (v: number, top: number) =>
+  top > 0 ? clamp100((v / top) * 100) : 0;
 
-/** Rate → 0–100 normalisieren (x pro 90 min, top = typischer Maximalwert) */
-function normalizeRatePer90(valuePer90: number, top: number): number {
-  if (top <= 0) return 0;
-  return clamp100((valuePer90 / top) * 100);
-}
+const normalizePercent = (value: number) =>
+  value <= 1 ? clamp100(value * 100) : clamp100(value);
 
-/** Prozentwert (0–1 oder 0–100) → 0–100 */
-function normalizePercent(value: number): number {
-  if (!isFinite(value) || value <= 0) return 0;
-  if (value <= 1) return clamp100(value * 100);
-  return clamp100(value);
-}
-
-/** Durchschnitt aus Komponenten */
 function avg(values: number[]): number {
   const valid = values.filter((v) => v > 0);
   if (!valid.length) return 0;
   return clamp100(valid.reduce((a, b) => a + b, 0) / valid.length);
 }
 
-/** inkl. Minuten → Wert pro 90 Minuten */
-function per90(value: number, minutes: number): number {
-  if (!minutes || minutes <= 0) return 0;
-  return (value * 90) / minutes;
-}
-
-/** Leihstatus aus Transfers extrahieren */
-function extractLoanInfo(transfers: any[]): {
-  onLoan: boolean;
-  loanFrom: string | null;
-} {
+function extractLoanInfo(transfers: any[]) {
   if (!Array.isArray(transfers)) return { onLoan: false, loanFrom: null };
 
   for (const t of transfers) {
-    if (t.type && typeof t.type === "string") {
-      if (t.type.toLowerCase().includes("loan")) {
-        return {
-          onLoan: true,
-          loanFrom: t.teams?.in?.name ?? null,
-        };
-      }
+    if (
+      typeof t.type === "string" &&
+      t.type.toLowerCase().includes("loan")
+    ) {
+      return {
+        onLoan: true,
+        loanFrom: t.teams?.in?.name ?? null,
+      };
     }
   }
 
   return { onLoan: false, loanFrom: null };
 }
 
-/** Scouting-Stats 0–100 aus API-Football-Statistik berechnen */
-function buildScoutingStats(stat: any | null): {
-  offensiv: number | null;
-  defensiv: number | null;
-  intelligenz: number | null;
-  physis: number | null;
-  technik: number | null;
-  tempo: number | null;
-} {
-  if (!stat) {
+/* ─────────────────────────────────────────────── */
+/* Scouting Stats = 0–100 Werte                    */
+/* ─────────────────────────────────────────────── */
+
+function buildScoutingStats(stat: any | null) {
+  if (!stat)
     return {
-      offensiv: null,
-      defensiv: null,
-      intelligenz: null,
-      physis: null,
-      technik: null,
-      tempo: null,
+      offensiv: 0,
+      defensiv: 0,
+      intelligenz: 0,
+      physis: 0,
+      technik: 0,
+      tempo: 0,
     };
-  }
 
   const games = stat.games || {};
   const goals = stat.goals || {};
@@ -137,112 +110,82 @@ function buildScoutingStats(stat: any | null): {
 
   const minutes = num(games.minutes) || num(games.appearences) * 60;
 
-  // Basiswerte
-  const g = num(goals.total);
-  const a = num(goals.assists);
-  const shotsTotal = num(shots.total);
-  const shotsOn = num(shots.on);
-  const keyPasses = num(passes.key);
-  const passAcc = num(passes.accuracy); // meist 0–100
-  const tacklesTotal = num(tackles.total);
-  const interceptions = num(tackles.interceptions);
+  const g90 = per90(num(goals.total), minutes);
+  const a90 = per90(num(goals.assists), minutes);
+  const shotsOn90 = per90(num(shots.on), minutes);
+  const kp90 = per90(num(passes.key), minutes);
+
+  const tackles90 = per90(num(tackles.total), minutes);
+  const inter90 = per90(num(tackles.interceptions), minutes);
+
   const duelsTotal = num(duels.total);
   const duelsWon = num(duels.won);
+  const duelsWon90 = per90(duelsWon, minutes);
+  const duels90 = per90(duelsTotal, minutes);
+
   const dribAttempts = num(dribbles.attempts);
   const dribSuccess = num(dribbles.success);
-  const foulsCommitted = num(fouls.committed);
-  const foulsDrawn = num(fouls.drawn);
-  const yellow = num(cards.yellow);
-  const red = num(cards.red);
-
-  const g90 = per90(g, minutes);
-  const a90 = per90(a, minutes);
-  const shotsOn90 = per90(shotsOn, minutes);
-  const kp90 = per90(keyPasses, minutes);
-  const tackles90 = per90(tacklesTotal, minutes);
-  const inter90 = per90(interceptions, minutes);
-  const duels90 = per90(duelsTotal, minutes);
-  const duelsWon90 = per90(duelsWon, minutes);
-  const foulsComm90 = per90(foulsCommitted, minutes);
-  const foulsDrawn90 = per90(foulsDrawn, minutes);
-
   const dribbleSuccessRate =
     dribAttempts > 0 ? dribSuccess / dribAttempts : 0;
 
-  const duelWinRate =
-    duelsTotal > 0 ? duelsWon / duelsTotal : 0;
+  const passAcc = num(passes.accuracy);
 
-  // ► Offensiv
-  const offensiv = avg([
-    normalizeRatePer90(g90, 0.8), // 0,8 Tore / 90 = sehr gut
-    normalizeRatePer90(a90, 0.6),
-    normalizeRatePer90(shotsOn90, 3),
-    normalizeRatePer90(kp90, 2),
-    normalizePercent(dribbleSuccessRate),
-  ]);
-
-  // ► Defensiv
-  const defensiv = avg([
-    normalizeRatePer90(tackles90, 4),    // 4 Tackles / 90
-    normalizeRatePer90(inter90, 3),
-    normalizeRatePer90(duelsWon90, 8),
-  ]);
-
-  // ► Intelligenz
-  // Mischung aus Key-Pässen, Passqualität und Karten-Disziplin
-  const cardsPer90 = per90(yellow + red * 2, minutes);
-  const discipline = clamp100(100 - normalizeRatePer90(cardsPer90, 0.8)); // weniger Karten = besser
-
-  const intelligenz = avg([
-    normalizeRatePer90(kp90, 2.5),
-    normalizePercent(passAcc),
-    discipline,
-  ]);
-
-  // ► Physis
-  const physis = avg([
-    normalizeRatePer90(duels90, 15),
-    normalizeRatePer90(foulsComm90, 3),
-  ]);
-
-  // ► Technik
-  const technik = avg([
-    normalizePercent(passAcc),
-    normalizePercent(dribbleSuccessRate),
-    normalizeRatePer90(kp90, 2.5),
-  ]);
-
-  // ► Tempo
-  // API-Football hat keine echte Geschwindigkeit, wir nähern über
-  // Dribblings + Offensiv-Aktivität
-  const tempo = avg([
-    normalizePercent(dribbleSuccessRate),
-    normalizeRatePer90(dribAttempts ? per90(dribAttempts, minutes) : 0, 6),
-    normalizeRatePer90(shotsOn90, 3),
-  ]);
+  const cardsPer90 = per90(num(cards.yellow) + num(cards.red) * 2, minutes);
+  const discipline = clamp100(100 - normalizeRatePer90(cardsPer90, 0.8));
 
   return {
-    offensiv: offensiv || null,
-    defensiv: defensiv || null,
-    intelligenz: intelligenz || null,
-    physis: physis || null,
-    technik: technik || null,
-    tempo: tempo || null,
+    offensiv: avg([
+      normalizeRatePer90(g90, 0.8),
+      normalizeRatePer90(a90, 0.6),
+      normalizeRatePer90(shotsOn90, 3),
+      normalizeRatePer90(kp90, 2),
+      normalizePercent(dribbleSuccessRate),
+    ]),
+
+    defensiv: avg([
+      normalizeRatePer90(tackles90, 4),
+      normalizeRatePer90(inter90, 3),
+      normalizeRatePer90(duelsWon90, 8),
+    ]),
+
+    intelligenz: avg([
+      normalizeRatePer90(kp90, 2.5),
+      normalizePercent(passAcc),
+      discipline,
+    ]),
+
+    physis: avg([
+      normalizeRatePer90(duels90, 15),
+      normalizeRatePer90(per90(num(fouls.committed), minutes), 3),
+    ]),
+
+    technik: avg([
+      normalizePercent(passAcc),
+      normalizePercent(dribbleSuccessRate),
+      normalizeRatePer90(kp90, 2.5),
+    ]),
+
+    tempo: avg([
+      normalizePercent(dribbleSuccessRate),
+      normalizeRatePer90(per90(dribAttempts, minutes), 6),
+      normalizeRatePer90(shotsOn90, 3),
+    ]),
   };
 }
 
-/**
- * POST – Spieler holen & in vereinfachtes Format bringen
- * Body: { season: number, leagueIds: number[] }
- */
+/* ─────────────────────────────────────────────── */
+/* Route: POST                                     */
+/* ─────────────────────────────────────────────── */
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
     const season = Number(body.season) || 2025;
-
     const leagueIds: number[] = Array.isArray(body.leagueIds)
-      ? body.leagueIds.map((n: any) => Number(n)).filter((n) => !isNaN(n))
+      ? body.leagueIds
+          .map((n: any) => Number(n))
+          .filter((n) => !isNaN(n))
       : [];
 
     if (!leagueIds.length) {
@@ -255,9 +198,7 @@ export async function POST(req: NextRequest) {
     const allPlayers: any[] = [];
     const playerCache = new Set<number>();
 
-    // 🔁 pro Liga
     for (const leagueId of leagueIds) {
-      // 1️⃣ Teams laden
       const teamsJson = await apiFootballFetch("/teams", {
         league: leagueId,
         season,
@@ -269,9 +210,8 @@ export async function POST(req: NextRequest) {
 
       const teamIds = teams
         .map((t: any) => t.team?.id)
-        .filter((id: any) => typeof id === "number");
+        .filter((id) => typeof id === "number");
 
-      // 2️⃣ Für jede Mannschaft Spieler holen
       for (const teamId of teamIds) {
         let page = 1;
 
@@ -295,37 +235,41 @@ export async function POST(req: NextRequest) {
               : null;
 
             if (!p?.id) continue;
-            if (playerCache.has(p.id)) continue; // Duplikate vermeiden
+            if (playerCache.has(p.id)) continue;
             playerCache.add(p.id);
 
             const loan = extractLoanInfo(p.transfers ?? []);
-
             const scoutingStats = buildScoutingStats(stats);
+
+            const rawFoot = (p.preferred_foot || "").toLowerCase();
+            let normalizedFoot: string | null = null;
+            if (rawFoot.includes("right")) normalizedFoot = "right";
+            else if (rawFoot.includes("left")) normalizedFoot = "left";
+            else if (rawFoot.includes("both")) normalizedFoot = "both";
 
             const playerObj = {
               apiId: p.id,
+              apiTeamId: stats?.team?.id ?? null,
+
               name: p.name ?? null,
               age: p.age ?? null,
+              nationality: p.nationality ?? null,
               heightCm: parseHeightToCm(p.height),
+
               position: stats?.games?.position ?? null,
-              foot: p.preferred_foot ?? null,
+              foot: normalizedFoot,
+
               league: stats?.league?.name ?? null,
               club: stats?.team?.name ?? null,
 
-              // Neues Feld: Foto
-              photo: p.photo ?? null,
+              imageUrl: p.photo ?? null,
 
-              // Loan-Infos
               onLoan: loan.onLoan,
               loanFrom: loan.loanFrom,
 
-              // Marktwert wird später im Admin manuell gesetzt
-              marketValue: null as number | null,
-
-              // Scouting-Stats 0–100
               stats: scoutingStats,
 
-              traits: [] as string[],
+              traits: [],
             };
 
             allPlayers.push(playerObj);
@@ -339,14 +283,11 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(allPlayers, { status: 200 });
-  } catch (error: any) {
-    console.error("❌ fetchPlayers error:", {
-      message: error?.message,
-      stack: error?.stack,
-    });
+  } catch (err: any) {
+    console.error("❌ fetchPlayers error", err);
 
     return NextResponse.json(
-      { error: "fetchPlayers failed", message: error?.message },
+      { error: "fetchPlayers failed", message: err.message },
       { status: 500 }
     );
   }

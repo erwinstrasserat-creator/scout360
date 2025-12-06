@@ -1,93 +1,114 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 
-const STAT_KEYS = [
-  "defensiv",
-  "intelligenz",
-  "offensiv",
-  "physis",
-  "technik",
-  "tempo",
-] as const;
-
-type MinStats = Partial<Record<(typeof STAT_KEYS)[number], number>>;
+type NeedStats = {
+  defensiv: number | null;
+  offensiv: number | null;
+  intelligenz: number | null;
+  physis: number | null;
+  technik: number | null;
+  tempo: number | null;
+};
 
 type Need = {
-  position?: string;
-  minAge?: number | null;
-  maxAge?: number | null;
-  heightMin?: number | null;
-  heightMax?: number | null;
-  preferredFoot?: string | null;
-  minStats?: MinStats | null;
-  requiredTraits?: string[] | null;
+  position: string | null;
+  minAge: number | null;
+  maxAge: number | null;
+  heightMin: number | null;
+  heightMax: number | null;
+  preferredFoot: string | null;
+  leagues: string[] | null;
+  minStats: NeedStats | null;
+};
+
+const EMPTY_STATS: NeedStats = {
+  defensiv: null,
+  offensiv: null,
+  intelligenz: null,
+  physis: null,
+  technik: null,
+  tempo: null,
 };
 
 export default function EditNeedPage({ params }: { params: { id: string } }) {
   const [need, setNeed] = useState<Need | null>(null);
   const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // ⛔ Wichtig: keine Firestore-Abfrage während des Next.js-Builds!
     if (typeof window === "undefined") return;
 
     const loadNeed = async () => {
       const ref = doc(db, "needs", params.id);
       const snap = await getDoc(ref);
-      if (!snap.exists()) return;
 
-      const data = snap.data() as any;
+      if (!snap.exists()) {
+        setNeed(null);
+        setLoading(false);
+        return;
+      }
+
+      const d = snap.data() as any;
 
       const normalized: Need = {
-        position: data.position ?? "",
-        minAge: data.minAge ?? null,
-        maxAge: data.maxAge ?? null,
-        heightMin: data.heightMin ?? null,
-        heightMax: data.heightMax ?? null,
-        preferredFoot: data.preferredFoot ?? "egal",
-        minStats: data.minStats ?? {},
-        requiredTraits: data.requiredTraits ?? [],
+        position: d.position ?? "",
+        minAge: d.minAge ?? null,
+        maxAge: d.maxAge ?? null,
+        heightMin: d.heightMin ?? null,
+        heightMax: d.heightMax ?? null,
+        preferredFoot: d.preferredFoot ?? "egal",
+        leagues: Array.isArray(d.leagues) ? d.leagues : [],
+        minStats: { ...EMPTY_STATS, ...(d.minStats || {}) },
       };
 
       setNeed(normalized);
+      setLoading(false);
     };
 
     loadNeed();
   }, [params.id]);
 
-  if (!need) {
-    return <div className="p-6">Need wird geladen…</div>;
-  }
-
   const update = (patch: Partial<Need>) => {
     setNeed((prev) => (prev ? { ...prev, ...patch } : prev));
   };
 
-  const updateStat = (key: (typeof STAT_KEYS)[number], value: string) => {
-    const num = value === "" ? undefined : Number(value);
-    update({
-      minStats: {
-        ...(need.minStats ?? {}),
-        [key]: isNaN(num as number) ? undefined : num,
-      },
-    });
+  const updateStat = (key: keyof NeedStats, value: string) => {
+    const num = value === "" ? null : Number(value);
+
+    setNeed((prev) =>
+      prev
+        ? {
+            ...prev,
+            minStats: {
+              ...(prev.minStats || EMPTY_STATS),
+              [key]: isNaN(num as any) ? null : num,
+            },
+          }
+        : prev
+    );
   };
 
   const saveNeed = async () => {
     if (!need) return;
+
     setSaving(true);
 
     await updateDoc(doc(db, "needs", params.id), {
       ...need,
+      leagues: need.leagues ?? [],
+      minStats: need.minStats ?? EMPTY_STATS,
     });
 
     setSaving(false);
-    alert("Need gespeichert!");
+    alert("✔ Need gespeichert");
   };
+
+  if (loading || !need) {
+    return <div className="p-6 text-slate-300">Need wird geladen…</div>;
+  }
 
   return (
     <div className="space-y-6 p-6">
@@ -166,29 +187,50 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
         <label className="text-sm text-slate-400">Bevorzugter Fuß</label>
         <select
           value={need.preferredFoot ?? "egal"}
-          onChange={(e) =>
-            update({ preferredFoot: e.target.value || "egal" })
-          }
+          onChange={(e) => update({ preferredFoot: e.target.value })}
           className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
         >
           <option value="egal">egal</option>
-          <option value="rechts">rechts</option>
-          <option value="links">links</option>
-          <option value="beide">beidfüßig</option>
+          <option value="left">links</option>
+          <option value="right">rechts</option>
+          <option value="both">beidfüßig</option>
         </select>
       </div>
 
-      {/* Minimum-Stats */}
+      {/* Ligen */}
       <div className="space-y-1">
-        <label className="text-sm text-slate-400">Minimum-Stats</label>
+        <label className="text-sm text-slate-400">Ligen (kommagetrennt)</label>
+        <input
+          type="text"
+          value={need.leagues?.join(", ") ?? ""}
+          onChange={(e) =>
+            update({
+              leagues: e.target.value
+                .split(",")
+                .map((l) => l.trim())
+                .filter(Boolean),
+            })
+          }
+          placeholder="Bundesliga, Zweite Liga, ..."
+          className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
+        />
+      </div>
+
+      {/* Minimum-Stats */}
+      <div className="space-y-2">
+        <label className="text-sm text-slate-400">Mindest-Stats (0–100)</label>
         <div className="grid grid-cols-3 gap-3">
-          {STAT_KEYS.map((key) => (
+          {Object.keys(EMPTY_STATS).map((key) => (
             <div key={key}>
               <label className="text-xs text-slate-500">{key}</label>
               <input
                 type="number"
-                value={need.minStats?.[key] ?? ""}
-                onChange={(e) => updateStat(key, e.target.value)}
+                min={0}
+                max={100}
+                value={(need.minStats as any)?.[key] ?? ""}
+                onChange={(e) =>
+                  updateStat(key as keyof NeedStats, e.target.value)
+                }
                 className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
               />
             </div>
@@ -196,29 +238,10 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
         </div>
       </div>
 
-      {/* Traits */}
-      <div className="space-y-1">
-        <label className="text-sm text-slate-400">Benötigte Traits</label>
-        <input
-          type="text"
-          placeholder="kommagetrennt"
-          value={need.requiredTraits?.join(", ") ?? ""}
-          onChange={(e) =>
-            update({
-              requiredTraits: e.target.value
-                .split(",")
-                .map((t) => t.trim())
-                .filter(Boolean),
-            })
-          }
-          className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
-        />
-      </div>
-
       <button
         onClick={saveNeed}
         disabled={saving}
-        className="bg-emerald-500 px-4 py-2 text-slate-900 rounded font-semibold"
+        className="bg-emerald-500 px-4 py-2 text-slate-900 rounded font-semibold disabled:opacity-50"
       >
         {saving ? "Speichern…" : "Need speichern"}
       </button>

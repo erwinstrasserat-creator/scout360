@@ -11,13 +11,16 @@ import {
 } from "firebase/firestore";
 
 /* ─────────────────────────────────────────
-   Typen
+   Typen – nur API-Daten
 ─────────────────────────────────────────── */
 
-type Player = {
+type PlayerFromApi = {
   apiId: number;
+  apiTeamId: number | null;
+
   name: string | null;
   age: number | null;
+  nationality: string | null;
   heightCm: number | null;
   position: string | null;
   foot: string | null;
@@ -25,15 +28,17 @@ type Player = {
   club: string | null;
   onLoan: boolean;
   loanFrom: string | null;
-  marketValue?: number | null;
+  imageUrl?: string | null;
+
   stats?: {
-    defensiv?: number | null;
-    intelligenz?: number | null;
-    offensiv?: number | null;
-    physis?: number | null;
-    technik?: number | null;
-    tempo?: number | null;
+    defensiv: number;
+    intelligenz: number;
+    offensiv: number;
+    physis: number;
+    technik: number;
+    tempo: number;
   };
+
   traits?: string[];
 };
 
@@ -81,7 +86,6 @@ type LeagueItem = {
 
 type LeagueGroups = Record<string, LeagueItem[]>;
 
-/* helper */
 const emptyStats = (): NeedStats => ({
   defensiv: null,
   intelligenz: null,
@@ -128,10 +132,8 @@ export default function AdminSeedPage() {
 
   const filterLocked = selectedNeedId !== "";
 
-  /* Needs laden (nur im Browser) */
+  /* Needs laden (Browser-only) */
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
     const loadNeeds = async () => {
       try {
         const snap = await getDocs(collection(db, "needs"));
@@ -144,10 +146,8 @@ export default function AdminSeedPage() {
     loadNeeds();
   }, []);
 
-  /* Ligen von API-Football laden (nur im Browser sinnvoll) */
+  /* Ligen laden (Browser-only) */
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
     const loadLeagues = async () => {
       setLeaguesLoading(true);
       try {
@@ -161,7 +161,7 @@ export default function AdminSeedPage() {
         setAllLeagues(data);
       } catch (err) {
         console.error(err);
-        setStatus("❌ Unerwarteter Fehler beim Laden der Ligen.");
+        setStatus("❌ Fehler beim Laden der Ligen.");
       } finally {
         setLeaguesLoading(false);
       }
@@ -170,18 +170,17 @@ export default function AdminSeedPage() {
     loadLeagues();
   }, [season]);
 
-  /* Ligen gruppiert nach Land + Suche */
+  /* Gruppierung + Suche */
   const groupedLeagues: LeagueGroups = useMemo(() => {
     const result: LeagueGroups = {};
-
-    const search = leagueSearch.trim().toLowerCase();
+    const s = leagueSearch.trim().toLowerCase();
 
     for (const lg of allLeagues) {
-      const text = (lg.country + " " + lg.name).toLowerCase();
-      if (search && !text.includes(search)) continue;
+      const txt = (lg.country + " " + lg.name).toLowerCase();
+      if (s && !txt.includes(s)) continue;
 
       if (!result[lg.country]) result[lg.country] = [];
-      result[lg.country].push(lg);
+      result[lg.country]!.push(lg);
     }
 
     for (const country of Object.keys(result)) {
@@ -196,7 +195,6 @@ export default function AdminSeedPage() {
     setSelectedNeedId(id);
 
     if (!id) {
-      // Manuelle Eingabe wieder freigeben
       setFilter({
         heightMin: null,
         heightMax: null,
@@ -232,56 +230,45 @@ export default function AdminSeedPage() {
       minStats,
     });
 
-    setStatus("Filter aus Need übernommen (Bearbeitung gesperrt).");
+    setStatus("Filter von Need übernommen.");
   };
 
-  /* Ligen togglen */
-  const toggleLeague = (id: number) => {
-    setSelectedLeagueIds((prev) =>
-      prev.includes(id) ? prev.filter((n) => n !== id) : [...prev, id]
-    );
-  };
-
-  /* Filter-Setter */
-  const setNumberFilter = (key: keyof NeedFilter, value: string) => {
+  /* Filter Helpers */
+  const setNumberFilter = (key: keyof NeedFilter, v: string) => {
     if (filterLocked) return;
-    const num = value === "" ? null : Number(value);
-    setFilter((prev) => ({ ...prev, [key]: isNaN(num as number) ? null : num }));
-  };
-
-  const setTextFilter = (key: keyof NeedFilter, value: string) => {
-    if (filterLocked) return;
-    setFilter((prev) => ({ ...prev, [key]: value || null }));
-  };
-
-  const setStatsFilter = (key: keyof NeedStats, value: string) => {
-    if (filterLocked) return;
-    const num = value === "" ? null : Number(value);
-    setFilter((prev) => ({
-      ...prev,
-      minStats: {
-        ...(prev.minStats ?? emptyStats()),
-        [key]: isNaN(num as number) ? null : num,
-      },
+    const n = v === "" ? null : Number(v);
+    setFilter((p) => ({
+      ...p,
+      [key]: isNaN(n as number) ? null : n,
     }));
   };
 
-  const setTraitsFilter = (value: string) => {
+  const setTextFilter = (key: keyof NeedFilter, v: string) => {
     if (filterLocked) return;
-    const parts = value
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-    setFilter((prev) => ({
-      ...prev,
+    setFilter((p) => ({ ...p, [key]: v || null }));
+  };
+
+  const setStatsFilter = (key: keyof NeedStats, v: string) => {
+    if (filterLocked) return;
+    const n = v === "" ? null : Number(v);
+    setFilter((p) => ({
+      ...p,
+      minStats: { ...(p.minStats ?? emptyStats()), [key]: isNaN(n!) ? null : n },
+    }));
+  };
+
+  const setTraitsFilter = (v: string) => {
+    if (filterLocked) return;
+    const parts = v.split(",").map((t) => t.trim()).filter(Boolean);
+    setFilter((p) => ({
+      ...p,
       requiredTraits: parts.length ? parts : null,
     }));
   };
 
-  /* Spieler Filter */
-  const matchesFilter = (p: Player): boolean => {
+  /* Spielervergleich */
+  const matchesFilter = (p: PlayerFromApi): boolean => {
     if (excludeLoans && p.onLoan) return false;
-
     if (nameFilter && !p.name?.toLowerCase().includes(nameFilter.toLowerCase()))
       return false;
 
@@ -307,8 +294,8 @@ export default function AdminSeedPage() {
       return false;
     }
 
-    if (filter.requiredTraits && filter.requiredTraits.length) {
-      if (!p.traits || p.traits.length === 0) return false;
+    if (filter.requiredTraits?.length) {
+      if (!p.traits?.length) return false;
       const lower = p.traits.map((t) => t.toLowerCase());
       for (const t of filter.requiredTraits) {
         if (!lower.includes(t.toLowerCase())) return false;
@@ -328,19 +315,13 @@ export default function AdminSeedPage() {
     return true;
   };
 
-  /* Import */
+  /* IMPORT */
   const importFromApi = async () => {
-    if (typeof window === "undefined") {
-      setStatus("❌ Import ist nur im Browser möglich.");
-      return;
-    }
-
-    if (!selectedLeagueIds.length) {
+    if (!selectedLeagueIds.length)
       return setStatus("❌ Bitte mindestens eine Liga auswählen.");
-    }
 
     setLoading(true);
-    setStatus("⏳ Lade Spieler aus API-Football…");
+    setStatus("⏳ Lade Spieler…");
 
     try {
       const res = await fetch("/api/fetchPlayers", {
@@ -351,28 +332,50 @@ export default function AdminSeedPage() {
 
       if (!res.ok) {
         console.error(await res.text());
-        setStatus("❌ Fehler beim Abrufen der Spieler.");
-        return;
+        return setStatus("❌ Fehler beim Abrufen der API-Daten.");
       }
 
-      const allPlayers: Player[] = await res.json();
-
-      console.log("API-Spieler empfangen:", allPlayers.length);
+      const allPlayers: PlayerFromApi[] = await res.json();
       const filtered = allPlayers.filter(matchesFilter);
-      console.log("Nach Filter:", filtered.length);
 
       setStatus(
-        `⏳ Importiere ${filtered.length} von ${allPlayers.length} Spielern in Firestore…`
+        `⏳ Importiere ${filtered.length} von ${allPlayers.length} Spielern…`
       );
 
       for (const p of filtered) {
-        await setDoc(doc(collection(db, "players")), p);
+        await setDoc(doc(collection(db, "players")), {
+          apiId: p.apiId,
+          apiTeamId: p.apiTeamId ?? null,
+
+          name: p.name,
+          age: p.age,
+          nationality: p.nationality,
+          heightCm: p.heightCm,
+          position: p.position,
+          foot: p.foot,
+          league: p.league,
+          club: p.club,
+          onLoan: p.onLoan,
+          loanFrom: p.loanFrom,
+          imageUrl: p.imageUrl ?? null,
+
+          stats: p.stats ?? {
+            offensiv: 0,
+            defensiv: 0,
+            intelligenz: 0,
+            physis: 0,
+            technik: 0,
+            tempo: 0,
+          },
+
+          traits: p.traits ?? [],
+        });
       }
 
-      setStatus(`✔️ Import abgeschlossen (${filtered.length} Spieler gespeichert).`);
+      setStatus(`✔️ Import abgeschlossen (${filtered.length} Spieler).`);
     } catch (err) {
       console.error(err);
-      setStatus("❌ Unerwarteter Fehler beim Import.");
+      setStatus("❌ Unerwarteter Fehler.");
     } finally {
       setLoading(false);
     }
@@ -380,33 +383,24 @@ export default function AdminSeedPage() {
 
   /* DB löschen */
   const clearDatabase = async () => {
-    if (typeof window === "undefined") {
-      setStatus("❌ Löschen ist nur im Browser möglich.");
-      return;
-    }
-
-    if (!confirm("Alle Spieler in 'players' löschen?")) return;
+    if (!confirm("ALLE Spieler wirklich löschen?")) return;
 
     setStatus("⏳ Lösche Spieler…");
 
     try {
       const snap = await getDocs(collection(db, "players"));
-      for (const d of snap.docs) {
-        await deleteDoc(d.ref);
-      }
+      for (const d of snap.docs) await deleteDoc(d.ref);
+
       setStatus("✔️ Datenbank geleert.");
     } catch (err) {
-      console.error("Fehler beim Löschen:", err);
-      setStatus("❌ Fehler beim Löschen der Datenbank.");
+      console.error(err);
+      setStatus("❌ Fehler beim Löschen.");
     }
   };
 
   /* UI START */
   const traitsText =
-    filter.requiredTraits && filter.requiredTraits.length
-      ? filter.requiredTraits.join(", ")
-      : "";
-
+    filter.requiredTraits?.length ? filter.requiredTraits.join(", ") : "";
   const stats = filter.minStats ?? emptyStats();
 
   return (
@@ -414,7 +408,7 @@ export default function AdminSeedPage() {
       <h2 className="text-lg font-semibold">Spieler Import (Seed)</h2>
 
       <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-6 space-y-6">
-        {/* Need Auswahl */}
+        {/* Need wählen */}
         <div>
           <p className="text-sm text-slate-300">1. Need wählen:</p>
           <select
@@ -422,10 +416,10 @@ export default function AdminSeedPage() {
             onChange={(e) => applyNeed(e.target.value)}
             className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full"
           >
-            <option value="">Keine Need (manuelle Filter)</option>
+            <option value="">Keine Need (manuell)</option>
             {needs.map((n) => (
               <option key={n.id} value={n.id}>
-                {n.position ?? "Position"} – Alter {n.minAge ?? "?"}-
+                {n.position ?? "Position"} – Alter {n.minAge ?? "?"}–
                 {n.maxAge ?? "?"}
               </option>
             ))}
@@ -446,7 +440,7 @@ export default function AdminSeedPage() {
           </select>
         </div>
 
-        {/* Name Filter */}
+        {/* Name-Filter */}
         <div>
           <p className="text-sm text-slate-300">Spielername enthält:</p>
           <input
@@ -461,7 +455,7 @@ export default function AdminSeedPage() {
         {/* Filter */}
         <div className="space-y-3">
           <p className="text-sm text-slate-300">
-            3. Filter (von Need übernommen, sonst manuell):
+            3. Filter (Need oder manuell):
           </p>
 
           <div className="grid md:grid-cols-2 gap-4">
@@ -472,7 +466,9 @@ export default function AdminSeedPage() {
                 type="number"
                 disabled={filterLocked}
                 value={filter.minAge ?? ""}
-                onChange={(e) => setNumberFilter("minAge", e.target.value)}
+                onChange={(e) =>
+                  setNumberFilter("minAge", e.target.value)
+                }
                 className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full disabled:opacity-60"
               />
             </div>
@@ -483,42 +479,49 @@ export default function AdminSeedPage() {
                 type="number"
                 disabled={filterLocked}
                 value={filter.maxAge ?? ""}
-                onChange={(e) => setNumberFilter("maxAge", e.target.value)}
+                onChange={(e) =>
+                  setNumberFilter("maxAge", e.target.value)
+                }
                 className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full disabled:opacity-60"
               />
             </div>
 
             {/* Größe */}
             <div>
-              <label className="text-xs text-slate-400">Größe min (cm)</label>
+              <label className="text-xs text-slate-400">Größe min</label>
               <input
                 type="number"
                 disabled={filterLocked}
                 value={filter.heightMin ?? ""}
-                onChange={(e) => setNumberFilter("heightMin", e.target.value)}
+                onChange={(e) =>
+                  setNumberFilter("heightMin", e.target.value)
+                }
                 className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full disabled:opacity-60"
               />
             </div>
 
             <div>
-              <label className="text-xs text-slate-400">Größe max (cm)</label>
+              <label className="text-xs text-slate-400">Größe max</label>
               <input
                 type="number"
                 disabled={filterLocked}
                 value={filter.heightMax ?? ""}
-                onChange={(e) => setNumberFilter("heightMax", e.target.value)}
+                onChange={(e) =>
+                  setNumberFilter("heightMax", e.target.value)
+                }
                 className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full disabled:opacity-60"
               />
             </div>
 
             {/* Position */}
             <div>
-              <label className="text-xs text-slate-400">Position</label>
+              <label className="text-xs text-slate-400">Position (API)</label>
               <input
                 type="text"
                 disabled={filterLocked}
                 value={filter.position ?? ""}
                 onChange={(e) => setTextFilter("position", e.target.value)}
+                placeholder="Defender, Midfielder…"
                 className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full disabled:opacity-60"
               />
             </div>
@@ -530,21 +533,21 @@ export default function AdminSeedPage() {
                 disabled={filterLocked}
                 value={filter.preferredFoot ?? "egal"}
                 onChange={(e) =>
-                  setTextFilter("preferredFoot", e.target.value || "egal")
+                  setTextFilter("preferredFoot", e.target.value)
                 }
                 className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full disabled:opacity-60"
               >
                 <option value="egal">egal</option>
-                <option value="rechts">rechts</option>
-                <option value="links">links</option>
-                <option value="beide">beidfüßig</option>
+                <option value="left">links</option>
+                <option value="right">rechts</option>
+                <option value="both">beidfüßig</option>
               </select>
             </div>
 
             {/* Traits */}
             <div className="md:col-span-2">
               <label className="text-xs text-slate-400">
-                Benötigte Traits (kommagetrennt)
+                Traits (kommagetrennt)
               </label>
               <input
                 type="text"
@@ -559,14 +562,14 @@ export default function AdminSeedPage() {
             <div className="md:col-span-2">
               <label className="text-xs text-slate-400">Minimum-Stats</label>
               <div className="grid md:grid-cols-3 gap-3">
-                {(Object.keys(stats) as (keyof NeedStats)[]).map((key) => (
-                  <div key={key}>
-                    <span className="text-[11px] text-slate-400">{key}</span>
+                {(Object.keys(stats) as (keyof NeedStats)[]).map((k) => (
+                  <div key={k}>
+                    <span className="text-[11px] text-slate-400">{k}</span>
                     <input
                       type="number"
                       disabled={filterLocked}
-                      value={stats[key] ?? ""}
-                      onChange={(e) => setStatsFilter(key, e.target.value)}
+                      value={stats[k] ?? ""}
+                      onChange={(e) => setStatsFilter(k, e.target.value)}
                       className="bg-slate-950 border border-slate-700 rounded px-2 py-2 w-full disabled:opacity-60"
                     />
                   </div>
@@ -596,7 +599,7 @@ export default function AdminSeedPage() {
               type="text"
               value={leagueSearch}
               onChange={(e) => setLeagueSearch(e.target.value)}
-              placeholder="Länder / Ligen filtern…"
+              placeholder="Filtern…"
               className="bg-slate-950 border border-slate-700 rounded px-2 py-1 text-sm w-64"
             />
           </div>
@@ -621,16 +624,23 @@ export default function AdminSeedPage() {
                       <input
                         type="checkbox"
                         checked={selectedLeagueIds.includes(lg.id)}
-                        onChange={() => toggleLeague(lg.id)}
+                        onChange={() =>
+                          setSelectedLeagueIds((prev) =>
+                            prev.includes(lg.id)
+                              ? prev.filter((n) => n !== lg.id)
+                              : [...prev, lg.id]
+                          )
+                        }
                       />
                       {lg.name}
                     </label>
                   ))}
                 </div>
               ))}
+
               {Object.keys(groupedLeagues).length === 0 && (
                 <p className="text-xs text-slate-400">
-                  Keine Ligen für diesen Filter gefunden.
+                  Keine Ligen gefunden.
                 </p>
               )}
             </div>

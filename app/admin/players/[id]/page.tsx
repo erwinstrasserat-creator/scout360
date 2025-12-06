@@ -1,4 +1,3 @@
-// app/admin/players/[id]/page.tsx
 "use client";
 
 import { useEffect, useState, FormEvent } from "react";
@@ -87,7 +86,7 @@ type Fixture = {
   teams: { home: { name: string }; away: { name: string } };
 };
 
-/* ──────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────── */
 
 export default function PlayerDetailPage() {
   const params = useParams();
@@ -136,7 +135,7 @@ export default function PlayerDetailPage() {
     traits: "",
   });
 
-  /* ────────────────────────────────────────────────
+  /* ───────────────────────────────────────────────
      LOAD PLAYER + VIDEOS + FAVORITE STATUS
   ───────────────────────────────────────────────── */
 
@@ -147,6 +146,7 @@ export default function PlayerDetailPage() {
       try {
         const ref = doc(db, "players", playerId);
         const snap = await getDoc(ref);
+
         if (!snap.exists()) {
           setPlayer(null);
           setLoading(false);
@@ -156,6 +156,7 @@ export default function PlayerDetailPage() {
         const data = snap.data() as PlayerDoc;
         setPlayer(data);
 
+        // Form füllen
         setForm({
           name: data.name ?? "",
           age: data.age != null ? String(data.age) : "",
@@ -167,12 +168,9 @@ export default function PlayerDetailPage() {
           heightCm: data.heightCm != null ? String(data.heightCm) : "",
           strengths: (data.strengths ?? []).join(", "),
           weaknesses: (data.weaknesses ?? []).join(", "),
-          potentialRating:
-            data.potentialRating != null ? String(data.potentialRating) : "",
-          overallRating:
-            data.overallRating != null ? String(data.overallRating) : "",
-          marketValue:
-            data.marketValue != null ? String(data.marketValue) : "",
+          potentialRating: data.potentialRating != null ? String(data.potentialRating) : "",
+          overallRating: data.overallRating != null ? String(data.overallRating) : "",
+          marketValue: data.marketValue != null ? String(data.marketValue) : "",
           marketValueSource: data.marketValueSource ?? "",
           marketValueUrl: data.marketValueUrl ?? "",
           agency: data.agency ?? "",
@@ -180,9 +178,11 @@ export default function PlayerDetailPage() {
           traits: (data.traits ?? []).join(", "),
         });
 
+        // Videos laden
         const videosRef = collection(db, "playerVideos");
         const qVideos = query(videosRef, where("playerId", "==", playerId));
         const vidsSnap = await getDocs(qVideos);
+
         setVideos(
           vidsSnap.docs.map((d) => ({
             id: d.id,
@@ -190,6 +190,7 @@ export default function PlayerDetailPage() {
           }))
         );
 
+        // Favorit prüfen
         const favRef = collection(db, "favoritePlayers");
         const favQuery = query(favRef, where("playerId", "==", playerId));
         const favSnap = await getDocs(favQuery);
@@ -205,7 +206,7 @@ export default function PlayerDetailPage() {
     load();
   }, [playerId]);
 
-  /* ────────────────────────────────────────────────
+  /* ───────────────────────────────────────────────
      FIXTURES LADEN
   ───────────────────────────────────────────────── */
 
@@ -215,17 +216,16 @@ export default function PlayerDetailPage() {
     setIsLoadingFixtures(true);
 
     try {
-      const res = await fetch(
-        `/api/fixtures/upcoming?teamId=${player.apiTeamId}&limit=4`,
-        { cache: "no-store" }
-      );
+      const res = await fetch(`/api/fixtures/upcoming?teamId=${player.apiTeamId}&limit=4`, {
+        cache: "no-store",
+      });
 
       if (!res.ok) {
         setStatus("⚠️ Fehler beim Laden der Fixtures.");
         return;
       }
 
-      const data: Fixture[] = await res.json();
+      const data = await res.json();
       setFixtures(data);
     } catch (err) {
       console.error(err);
@@ -236,12 +236,10 @@ export default function PlayerDetailPage() {
   };
 
   useEffect(() => {
-    if (player?.apiTeamId) {
-      loadFixtures();
-    }
+    if (player?.apiTeamId) loadFixtures();
   }, [player?.apiTeamId]);
 
-  /* ────────────────────────────────────────────────
+/* ───────────────────────────────────────────────
      FAVORIT HINZUFÜGEN / ENTFERNEN
   ───────────────────────────────────────────────── */
 
@@ -251,14 +249,17 @@ export default function PlayerDetailPage() {
     const favRef = collection(db, "favoritePlayers");
 
     if (isFavorite) {
+      // Entfernen
       const qFav = query(favRef, where("playerId", "==", playerId));
       const snap = await getDocs(qFav);
       for (const d of snap.docs) await deleteDoc(d.ref);
+
       setIsFavorite(false);
       setStatus("❌ Aus Favoriten entfernt");
       return;
     }
 
+    // Hinzufügen
     const favDoc = {
       playerId,
       name: player.name ?? "",
@@ -267,13 +268,13 @@ export default function PlayerDetailPage() {
       imageUrl: player.imageUrl ?? null,
       createdAt: Date.now(),
     };
-    await addDoc(favRef, favDoc);
 
+    await addDoc(favRef, favDoc);
     setIsFavorite(true);
     setStatus("⭐ Zu Favoriten hinzugefügt");
   };
 
-  /* ────────────────────────────────────────────────
+  /* ───────────────────────────────────────────────
      FORM UPDATE
   ───────────────────────────────────────────────── */
 
@@ -281,7 +282,7 @@ export default function PlayerDetailPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  /* ────────────────────────────────────────────────
+  /* ───────────────────────────────────────────────
      PLAYER SAVE
   ───────────────────────────────────────────────── */
 
@@ -319,6 +320,7 @@ export default function PlayerDetailPage() {
         potentialRating: form.potentialRating
           ? Number(form.potentialRating)
           : null,
+
         overallRating: form.overallRating
           ? Number(form.overallRating)
           : null,
@@ -345,7 +347,7 @@ export default function PlayerDetailPage() {
     }
   };
 
-  /* ────────────────────────────────────────────────
+  /* ───────────────────────────────────────────────
      IMAGE UPLOAD
   ───────────────────────────────────────────────── */
 
@@ -376,7 +378,7 @@ export default function PlayerDetailPage() {
     }
   };
 
-  /* ────────────────────────────────────────────────
+  /* ───────────────────────────────────────────────
      VIDEO UPLOAD / VIDEO ADD LINK
   ───────────────────────────────────────────────── */
 
@@ -434,21 +436,23 @@ export default function PlayerDetailPage() {
     setVideos((prev) => [...prev, { id: newRef.id, ...newVid }]);
     setVideoUrl("");
     setVideoTitle("");
+
     setStatus("✔️ Video-Link hinzugefügt");
   };
 
-  /* ────────────────────────────────────────────────
+  /* ───────────────────────────────────────────────
      DELETE PLAYER
   ───────────────────────────────────────────────── */
 
   const deletePlayer = async () => {
     if (!confirm("Diesen Spieler wirklich löschen?")) return;
+
     await deleteDoc(doc(db, "players", playerId));
     router.push("/admin/players");
   };
 
-  /* ────────────────────────────────────────────────
-     PDF EXPORT
+/* ───────────────────────────────────────────────
+     PDF EXPORT (ruft /api/export/player/pdf auf)
   ───────────────────────────────────────────────── */
 
   const handleExportPdf = async (mode: "basic" | "full") => {
@@ -474,10 +478,9 @@ export default function PlayerDetailPage() {
 
       const a = document.createElement("a");
       a.href = url;
-      const baseName = (player?.name || "player").replace(
-        /[^\w\-]+/g,
-        "_"
-      );
+
+      const baseName = (player?.name || "player").replace(/[^\w\-]+/g, "_");
+
       a.download =
         mode === "basic"
           ? `${baseName}_profil.pdf`
@@ -486,6 +489,7 @@ export default function PlayerDetailPage() {
       document.body.appendChild(a);
       a.click();
       a.remove();
+
       URL.revokeObjectURL(url);
 
       setStatus(
@@ -499,7 +503,7 @@ export default function PlayerDetailPage() {
     }
   };
 
-  /* ────────────────────────────────────────────────
+  /* ───────────────────────────────────────────────
      RENDER
   ───────────────────────────────────────────────── */
 
@@ -508,9 +512,7 @@ export default function PlayerDetailPage() {
   }
 
   if (!player) {
-    return (
-      <div className="p-4 text-slate-400">Spieler nicht gefunden</div>
-    );
+    return <div className="p-4 text-slate-400">Spieler nicht gefunden</div>;
   }
 
   const stats = player.stats ?? {
@@ -525,10 +527,11 @@ export default function PlayerDetailPage() {
   return (
     <div className="space-y-6 p-6">
       {/* HEADER */}
-      <div className="flex flex-wrap gap-3 justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-3">
         <h1 className="text-2xl font-bold">{player.name}</h1>
 
         <div className="flex flex-wrap gap-3 items-center">
+
           {/* PDF Buttons */}
           <button
             onClick={() => handleExportPdf("basic")}
@@ -536,6 +539,7 @@ export default function PlayerDetailPage() {
           >
             PDF ohne Reports
           </button>
+
           <button
             onClick={() => handleExportPdf("full")}
             className="bg-sky-500 hover:bg-sky-400 px-3 py-2 rounded text-xs font-semibold text-slate-900"
@@ -543,7 +547,7 @@ export default function PlayerDetailPage() {
             PDF mit Reports
           </button>
 
-          {/* Favorite / Delete */}
+          {/* Favorit */}
           <button
             onClick={toggleFavorite}
             className={`px-4 py-2 rounded text-sm font-semibold ${
@@ -555,6 +559,7 @@ export default function PlayerDetailPage() {
             {isFavorite ? "★ Favorit" : "☆ Favorit hinzufügen"}
           </button>
 
+          {/* Löschen */}
           <button
             onClick={deletePlayer}
             className="bg-red-500 hover:bg-red-400 px-4 py-2 rounded text-sm font-semibold text-slate-900"
@@ -573,25 +578,25 @@ export default function PlayerDetailPage() {
         </div>
       )}
 
-      {/* GRID: INFO + VIDEOS */}
+      {/* GRID */}
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* LEFT: PLAYER INFO + FORM */}
+
+        {/* LEFT COLUMN: Player Info + Form */}
         <div className="lg:col-span-2 space-y-6">
+
           {/* IMAGE + BASIC INFO */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 flex gap-6">
+
             <div className="flex flex-col items-center gap-3">
               <div className="w-32 h-32 rounded-xl overflow-hidden bg-slate-800 flex items-center justify-center">
                 {player.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={player.imageUrl}
                     className="w-full h-full object-cover"
                     alt={player.name ?? "Player"}
                   />
                 ) : (
-                  <span className="text-xs text-slate-400">
-                    kein Bild
-                  </span>
+                  <span className="text-xs text-slate-400">kein Bild</span>
                 )}
               </div>
 
@@ -604,44 +609,24 @@ export default function PlayerDetailPage() {
                   onChange={handleImageUpload}
                 />
               </label>
+
               {imageUploading && (
-                <span className="text-[11px] text-slate-400">
-                  lade…
-                </span>
+                <span className="text-[11px] text-slate-400">lade…</span>
               )}
             </div>
 
             <div className="flex-1 text-sm text-slate-300 space-y-1">
-              <div>
-                <b>Name:</b> {player.name}
-              </div>
-              <div>
-                <b>Alter:</b> {player.age ?? "-"}
-              </div>
-              <div>
-                <b>Nation:</b> {player.nationality ?? "-"}
-              </div>
-              <div>
-                <b>Verein:</b> {player.club ?? "-"}
-              </div>
-              <div>
-                <b>Liga:</b> {player.league ?? "-"}
-              </div>
-              <div>
-                <b>Position:</b> {player.position ?? "-"}
-              </div>
-              <div>
-                <b>Fuß:</b> {player.foot ?? "-"}
-              </div>
-              <div>
-                <b>Größe:</b>{" "}
-                {player.heightCm ? player.heightCm + " cm" : "-"}
-              </div>
+              <div><b>Name:</b> {player.name}</div>
+              <div><b>Alter:</b> {player.age ?? "-"}</div>
+              <div><b>Nation:</b> {player.nationality ?? "-"}</div>
+              <div><b>Verein:</b> {player.club ?? "-"}</div>
+              <div><b>Liga:</b> {player.league ?? "-"}</div>
+              <div><b>Position:</b> {player.position ?? "-"}</div>
+              <div><b>Fuß:</b> {player.foot ?? "-"}</div>
+              <div><b>Größe:</b> {player.heightCm ? `${player.heightCm} cm` : "-"}</div>
               <div>
                 <b>Leihe:</b>{" "}
-                {player.onLoan
-                  ? `ja – von ${player.loanFrom ?? "?"}`
-                  : "nein"}
+                {player.onLoan ? `ja – von ${player.loanFrom ?? "?"}` : "nein"}
               </div>
             </div>
           </div>
@@ -649,9 +634,8 @@ export default function PlayerDetailPage() {
           {/* SCOUTING INFO – FIXTURES */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
             <div className="flex justify-between items-center mb-3">
-              <h2 className="text-lg font-semibold">
-                Scouting Info – nächste Spiele
-              </h2>
+              <h2 className="text-lg font-semibold">Scouting Info – nächste Spiele</h2>
+
               <button
                 onClick={loadFixtures}
                 disabled={!player.apiTeamId || isLoadingFixtures}
@@ -679,9 +663,7 @@ export default function PlayerDetailPage() {
                   key={f.fixture.id}
                   className="border border-slate-700 p-2 rounded text-sm text-slate-300"
                 >
-                  <div className="font-semibold">
-                    {f.league.name}
-                  </div>
+                  <div className="font-semibold">{f.league.name}</div>
                   <div>
                     {f.teams.home.name} – {f.teams.away.name}
                   </div>
@@ -693,7 +675,7 @@ export default function PlayerDetailPage() {
             </div>
           </div>
 
-          {/* EDIT FORM */}
+{/* EDIT FORM */}
           <form
             onSubmit={handleSave}
             className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-4"
@@ -701,49 +683,42 @@ export default function PlayerDetailPage() {
             <h2 className="text-lg font-semibold">Spieler bearbeiten</h2>
 
             <div className="grid md:grid-cols-2 gap-4 text-sm">
-              {(
-                [
-                  ["name", "Name"],
-                  ["age", "Alter"],
-                  ["nationality", "Nationalität"],
-                  ["club", "Verein"],
-                  ["league", "Liga"],
-                  ["position", "Position"],
-                  ["foot", "Fuß"],
-                  ["heightCm", "Größe (cm)"],
-                ] as const
-              ).map(([key, label]) => (
+              {/* Standard-Felder */}
+              {[
+                ["name", "Name"],
+                ["age", "Alter"],
+                ["nationality", "Nationalität"],
+                ["club", "Verein"],
+                ["league", "Liga"],
+                ["position", "Position"],
+                ["foot", "Fuß"],
+                ["heightCm", "Größe (cm)"],
+              ].map(([key, label]) => (
                 <div key={key}>
-                  <label className="text-xs text-slate-400">
-                    {label}
-                  </label>
+                  <label className="text-xs text-slate-400">{label}</label>
                   <input
                     className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1"
                     value={(form as any)[key]}
                     onChange={(e) =>
-                      updateFormField(key, e.target.value)
+                      updateFormField(key as any, e.target.value)
                     }
                   />
                 </div>
               ))}
 
+              {/* Stärken */}
               <div className="md:col-span-2">
-                <label className="text-xs text-slate-400">
-                  Stärken (kommagetrennt)
-                </label>
+                <label className="text-xs text-slate-400">Stärken</label>
                 <input
                   className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1"
                   value={form.strengths}
-                  onChange={(e) =>
-                    updateFormField("strengths", e.target.value)
-                  }
+                  onChange={(e) => updateFormField("strengths", e.target.value)}
                 />
               </div>
 
+              {/* Schwächen */}
               <div className="md:col-span-2">
-                <label className="text-xs text-slate-400">
-                  Schwächen (kommagetrennt)
-                </label>
+                <label className="text-xs text-slate-400">Schwächen</label>
                 <input
                   className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1"
                   value={form.weaknesses}
@@ -753,41 +728,35 @@ export default function PlayerDetailPage() {
                 />
               </div>
 
-              {(
-                [
-                  ["potentialRating", "Potential Rating (0–100)"],
-                  ["overallRating", "Overall Rating (0–100)"],
-                  ["marketValue", "Marktwert"],
-                  ["marketValueSource", "Marktwert Quelle"],
-                  ["marketValueUrl", "Marktwert URL"],
-                  ["agency", "Agentur"],
-                  ["agencyUrl", "Agentur URL"],
-                ] as const
-              ).map(([key, label]) => (
+              {/* Ratings / Agency / Marktwert */}
+              {[
+                ["potentialRating", "Potential Rating (0–100)"],
+                ["overallRating", "Overall Rating (0–100)"],
+                ["marketValue", "Marktwert"],
+                ["marketValueSource", "Marktwert Quelle"],
+                ["marketValueUrl", "Marktwert URL"],
+                ["agency", "Agentur"],
+                ["agencyUrl", "Agentur URL"],
+              ].map(([key, label]) => (
                 <div key={key}>
-                  <label className="text-xs text-slate-400">
-                    {label}
-                  </label>
+                  <label className="text-xs text-slate-400">{label}</label>
                   <input
                     className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1"
                     value={(form as any)[key]}
                     onChange={(e) =>
-                      updateFormField(key, e.target.value)
+                      updateFormField(key as any, e.target.value)
                     }
                   />
                 </div>
               ))}
 
+              {/* Traits */}
               <div className="md:col-span-2">
-                <label className="text-xs text-slate-400">
-                  Traits (kommagetrennt)
-                </label>
+                <label className="text-xs text-slate-400">Traits</label>
                 <input
                   className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1"
                   value={form.traits}
-                  onChange={(e) =>
-                    updateFormField("traits", e.target.value)
-                  }
+                  onChange={(e) => updateFormField("traits", e.target.value)}
                 />
               </div>
             </div>
@@ -803,9 +772,7 @@ export default function PlayerDetailPage() {
 
           {/* SCOUTING STATS */}
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 text-sm text-slate-300">
-            <h2 className="text-lg font-semibold mb-2">
-              Scouting-Stats (API)
-            </h2>
+            <h2 className="text-lg font-semibold mb-2">Scouting-Stats (API)</h2>
             <div className="grid md:grid-cols-3 gap-2">
               <div>Offensiv: {stats.offensiv}</div>
               <div>Defensiv: {stats.defensiv}</div>
@@ -817,11 +784,12 @@ export default function PlayerDetailPage() {
           </div>
         </div>
 
-        {/* RIGHT COLUMN – VIDEOS */}
+        {/* RIGHT COLUMN – Videos */}
         <div className="space-y-4">
           <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4">
             <h2 className="text-lg font-semibold mb-3">Videos</h2>
 
+            {/* Datei-Upload */}
             <div className="text-xs text-slate-300 space-y-1 mb-3">
               <div>Video-Datei hochladen:</div>
               <input
@@ -835,14 +803,10 @@ export default function PlayerDetailPage() {
               )}
             </div>
 
-            <form
-              onSubmit={handleAddVideo}
-              className="space-y-2 text-sm mb-4"
-            >
+            {/* Video-Link hinzufügen */}
+            <form onSubmit={handleAddVideo} className="space-y-2 text-sm mb-4">
               <div>
-                <label className="text-xs text-slate-400">
-                  Titel
-                </label>
+                <label className="text-xs text-slate-400">Titel</label>
                 <input
                   className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1"
                   value={videoTitle}
@@ -851,9 +815,7 @@ export default function PlayerDetailPage() {
               </div>
 
               <div>
-                <label className="text-xs text-slate-400">
-                  Video-URL
-                </label>
+                <label className="text-xs text-slate-400">Video-URL</label>
                 <input
                   className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1"
                   value={videoUrl}
@@ -863,9 +825,7 @@ export default function PlayerDetailPage() {
               </div>
 
               <div>
-                <label className="text-xs text-slate-400">
-                  Quelle
-                </label>
+                <label className="text-xs text-slate-400">Quelle</label>
                 <input
                   className="w-full bg-slate-950 border border-slate-700 rounded px-2 py-1"
                   value={videoSource}
@@ -878,11 +838,10 @@ export default function PlayerDetailPage() {
               </button>
             </form>
 
+            {/* Video-Liste */}
             <div className="space-y-2">
               {videos.length === 0 && (
-                <div className="text-xs text-slate-400">
-                  Keine Videos
-                </div>
+                <div className="text-xs text-slate-400">Keine Videos</div>
               )}
 
               {videos.map((v) => (
@@ -890,9 +849,8 @@ export default function PlayerDetailPage() {
                   key={v.id}
                   className="border border-slate-800 rounded-lg p-2 text-xs text-slate-200 space-y-1"
                 >
-                  <div className="font-semibold">
-                    {v.title || "Video"}
-                  </div>
+                  <div className="font-semibold">{v.title || "Video"}</div>
+
                   <a
                     className="underline break-all text-slate-400"
                     href={v.url}
@@ -901,6 +859,7 @@ export default function PlayerDetailPage() {
                   >
                     {v.url}
                   </a>
+
                   {v.source && (
                     <div className="text-[11px] text-slate-500">
                       Quelle: {v.source}
@@ -911,6 +870,7 @@ export default function PlayerDetailPage() {
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );

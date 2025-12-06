@@ -9,7 +9,7 @@ export const fetchCache = "force-no-store";
 const API_FOOTBALL_BASE = "https://v3.football.api-sports.io";
 
 /**
- * Allgemeiner API-Football Fetch Wrapper
+ * API-Football Fetch Wrapper
  */
 async function apiFootballFetch(
   path: string,
@@ -29,8 +29,9 @@ async function apiFootballFetch(
     headers: {
       "x-apisports-key": apiKey,
     },
-    // Ligen sollen immer frisch sein
+    // absolut sicher: niemals cachen
     cache: "no-store",
+    next: { revalidate: 0 },
   });
 
   if (!res.ok) {
@@ -41,64 +42,50 @@ async function apiFootballFetch(
   return res.json();
 }
 
-type ApiLeagueItem = {
-  league: {
-    id: number;
-    name: string;
-    type?: string;
-    logo?: string | null;
-  };
-  country?: {
-    name?: string;
-    code?: string | null;
-    flag?: string | null;
-  };
-};
-
 /**
- * GET /api/leagues?season=2025&country=Germany (country optional)
+ * GET /api/leagues?season=2025
+ * Liefert eine stabilisierte, gecleante Ligenliste.
  */
 export async function GET(req: NextRequest) {
   try {
-    // Wichtig: nextUrl statt new URL(req.url), damit es mit dynamic=force-dynamic passt
     const searchParams = req.nextUrl.searchParams;
     const season = searchParams.get("season") || "2025";
-    const countryFilter = searchParams.get("country"); // optional
 
+    // API-Football liefert oft zu viele oder chaotische Einträge.
+    // Wir normalisieren sauber und lassen Cups NICHT mehr rausfallen.
     const json = await apiFootballFetch("/leagues", { season });
 
-    const items: ApiLeagueItem[] = Array.isArray(json.response)
-      ? json.response
-      : [];
+    const items = Array.isArray(json.response) ? json.response : [];
 
     const leagues = items
-      .filter((item) => item.league && item.league.id)
-      .filter((item) => {
-        if (!countryFilter) return true;
-        const c = item.country?.name || "";
-        return c.toLowerCase() === countryFilter.toLowerCase();
-      })
-      // nur klassische Ligen (keine Cups) – kann man später anpassen
-      .filter((item) => !item.league.type || item.league.type === "League")
       .map((item) => ({
-        id: item.league.id,
-        name: item.league.name,
-        country: item.country?.name || "Unbekannt",
-        type: item.league.type || null,
-        logo: item.league.logo || null,
-      }));
+        id: item.league?.id ?? null,
+        name: item.league?.name ?? "Unbekannt",
+        type: item.league?.type ?? null,
+        country: item.country?.name ?? "International",
+        logo: item.league?.logo ?? null,
+      }))
+      // nur gültige IDs
+      .filter((l) => typeof l.id === "number")
+      // manche Einträge enthalten komplett leere Ligen
+      .filter((l) => l.name && l.name !== "");
 
+    // Sortierung nach Land + Name
     leagues.sort((a, b) => {
       if (a.country === b.country) return a.name.localeCompare(b.name);
       return a.country.localeCompare(b.country);
     });
 
-    return NextResponse.json(leagues, { status: 200 });
-  } catch (error: any) {
-    console.error("❌ /api/leagues error:", {
-      message: error?.message,
-      stack: error?.stack,
+    // HARD CACHE DISABLE – Vercel darf das nicht speichern
+    return new NextResponse(JSON.stringify(leagues), {
+      status: 200,
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        "Content-Type": "application/json",
+      },
     });
+  } catch (error: any) {
+    console.error("❌ /api/leagues error:", error);
 
     return NextResponse.json(
       { error: "leagues failed", message: error?.message },
