@@ -127,6 +127,7 @@ export default function AdminSeedPage() {
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // 👉 WICHTIG: Wenn ein Need ausgewählt ist, sind Filter gesperrt
   const filterLocked = selectedNeedId !== "";
 
   /* Needs laden (nur im Browser) */
@@ -150,7 +151,7 @@ export default function AdminSeedPage() {
     loadNeeds();
   }, []);
 
-  /* API-Positionsliste laden (dynamisch aus /api/positions) */
+  /* API-Positionsliste laden (optional aus /api/positions) */
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -160,7 +161,7 @@ export default function AdminSeedPage() {
         const res = await fetch(`/api/positions?season=${season}`);
         if (!res.ok) {
           console.error(await res.text());
-          // Fallback
+          // Fallback – klassische 4er Positionen
           setPositions(["Goalkeeper", "Defender", "Midfielder", "Attacker"]);
           return;
         }
@@ -275,7 +276,7 @@ export default function AdminSeedPage() {
     );
   };
 
-  /* Filter-Setter */
+  /* Filter-Setter: nur erlaubt, wenn KEIN Need gewählt ist */
   const setNumberFilter = (key: keyof NeedFilter, value: string) => {
     if (filterLocked) return;
     const numVal = value === "" ? null : Number(value);
@@ -562,7 +563,7 @@ export default function AdminSeedPage() {
               />
             </div>
 
-            {/* Position – nur API-Werte aus /api/positions */}
+            {/* Position – nur API-Werte */}
             <div>
               <label className="text-xs text-slate-400">
                 Position (API-Original)

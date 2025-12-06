@@ -1,4 +1,3 @@
-// app/admin/needs/new/page.tsx
 "use client";
 export const dynamic = "force-dynamic";
 
@@ -9,19 +8,19 @@ import { useRouter } from "next/navigation";
 
 // API-kompatible Positionsliste
 const API_POSITIONS = ["Goalkeeper", "Defender", "Midfielder", "Attacker"] as const;
-
 type PositionOption = (typeof API_POSITIONS)[number] | "";
 
 export default function NewNeedPage() {
   const router = useRouter();
 
   const [form, setForm] = useState({
+    name: "",                    // <── NEU
     position: "" as PositionOption,
     minAge: "",
     maxAge: "",
     heightMin: "",
     heightMax: "",
-    preferredFoot: "egal", // egal | left | right | both
+    preferredFoot: "egal",
     leagues: "",
     minDefensiv: "",
     minOffensiv: "",
@@ -39,47 +38,41 @@ export default function NewNeedPage() {
   };
 
   const createNeed = async () => {
-    if (typeof window === "undefined") return;
+    if (!form.name.trim()) {
+      setError("Bitte einen Need-Namen eingeben!");
+      return;
+    }
 
     setSaving(true);
     setError(null);
 
     try {
       const needData = {
-        // Position – exakt wie in API-Football ("Goalkeeper", "Defender", ...)
-        position: form.position || null,
+        name: form.name.trim(),                            // <── SPEICHERN
 
-        // Alter
+        position: form.position || null,
         minAge: form.minAge ? Number(form.minAge) : null,
         maxAge: form.maxAge ? Number(form.maxAge) : null,
-
-        // Größe
         heightMin: form.heightMin ? Number(form.heightMin) : null,
         heightMax: form.heightMax ? Number(form.heightMax) : null,
 
-        // Fuß
-        // Wichtig: Werte, die mit API-Football kompatibel sind (left/right/both)
-        preferredFoot:
-          form.preferredFoot === "egal" ? "egal" : form.preferredFoot,
+        preferredFoot: form.preferredFoot,
 
-        // Ligen (kommagetrennt)
-        // INFO-Feld – der eigentliche Import arbeitet mit League-IDs
         leagues:
           form.leagues.trim().length > 0
             ? form.leagues.split(",").map((l) => l.trim())
             : [],
 
-        // Mindest-Stats aus API (0–100)
         minStats: {
           defensiv: form.minDefensiv ? Number(form.minDefensiv) : null,
           offensiv: form.minOffensiv ? Number(form.minOffensiv) : null,
-          intelligenz: form.minIntelligenz
-            ? Number(form.minIntelligenz)
-            : null,
+          intelligenz: form.minIntelligenz ? Number(form.minIntelligenz) : null,
           physis: form.minPhysis ? Number(form.minPhysis) : null,
           technik: form.minTechnik ? Number(form.minTechnik) : null,
           tempo: form.minTempo ? Number(form.minTempo) : null,
         },
+
+        createdAt: Date.now(),
       };
 
       const ref = await addDoc(collection(db, "needs"), needData);
@@ -98,6 +91,17 @@ export default function NewNeedPage() {
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
+      {/* NAME (NEU) */}
+      <div className="space-y-2">
+        <label className="text-sm text-slate-400">Name der Need</label>
+        <input
+          className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
+          placeholder='z.B. "RB Salzburg – ZOM – 06122025"'
+          value={form.name}
+          onChange={(e) => handleChange("name", e.target.value)}
+        />
+      </div>
+
       {/* Position */}
       <div className="space-y-2">
         <label className="text-sm text-slate-400">
@@ -115,9 +119,6 @@ export default function NewNeedPage() {
             </option>
           ))}
         </select>
-        <p className="text-[11px] text-slate-500">
-          Werte kommen direkt aus API-Football, z.B. Defender, Midfielder …
-        </p>
       </div>
 
       {/* Alter */}
@@ -145,7 +146,7 @@ export default function NewNeedPage() {
       {/* Größe */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="text-sm text-slate-400">Größe min (cm)</label>
+          <label className="text-sm text-slate-400">Größe min</label>
           <input
             type="number"
             className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
@@ -153,8 +154,9 @@ export default function NewNeedPage() {
             onChange={(e) => handleChange("heightMin", e.target.value)}
           />
         </div>
+
         <div>
-          <label className="text-sm text-slate-400">Größe max (cm)</label>
+          <label className="text-sm text-slate-400">Größe max</label>
           <input
             type="number"
             className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
@@ -164,7 +166,7 @@ export default function NewNeedPage() {
         </div>
       </div>
 
-      {/* Bevorzugter Fuß */}
+      {/* Preferred Foot */}
       <div>
         <label className="text-sm text-slate-400">Bevorzugter Fuß</label>
         <select
@@ -181,26 +183,20 @@ export default function NewNeedPage() {
 
       {/* Ligen */}
       <div>
-        <label className="text-sm text-slate-400">
-          Ligen (kommagetrennt, optional)
-        </label>
+        <label className="text-sm text-slate-400">Ligen (Infofeld)</label>
         <input
           className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
-          placeholder="z.B. Bundesliga, 2. Bundesliga"
+          placeholder="optional: Bundesliga, 2. Liga"
           value={form.leagues}
           onChange={(e) => handleChange("leagues", e.target.value)}
         />
-        <p className="text-[11px] text-slate-500">
-          Info-Feld. Für den Import wählst du die Ligen auf der Seed-Seite über
-          die API-Liste aus.
-        </p>
       </div>
 
       {/* Mindest-Stats */}
       <div className="space-y-2">
         <label className="text-sm text-slate-400">Mindest-Stats (0–100)</label>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-3">
           {[
             ["minOffensiv", "Offensiv"],
             ["minDefensiv", "Defensiv"],

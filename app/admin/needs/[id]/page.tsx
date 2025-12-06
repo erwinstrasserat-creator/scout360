@@ -14,6 +14,7 @@ type NeedStats = {
 };
 
 type Need = {
+  name: string;                 // <── NEU & Pflichtfeld
   position: string | null;
   minAge: number | null;
   maxAge: number | null;
@@ -39,8 +40,6 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
     const loadNeed = async () => {
       const ref = doc(db, "needs", params.id);
       const snap = await getDoc(ref);
@@ -54,6 +53,8 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
       const d = snap.data() as any;
 
       const normalized: Need = {
+        name: d.name ?? "",         // <── Name übernehmen
+
         position: d.position ?? "",
         minAge: d.minAge ?? null,
         maxAge: d.maxAge ?? null,
@@ -93,6 +94,10 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
 
   const saveNeed = async () => {
     if (!need) return;
+    if (!need.name.trim()) {
+      alert("Bitte einen Need-Namen eingeben!");
+      return;
+    }
 
     setSaving(true);
 
@@ -100,6 +105,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
       ...need,
       leagues: need.leagues ?? [],
       minStats: need.minStats ?? EMPTY_STATS,
+      name: need.name.trim(),
     });
 
     setSaving(false);
@@ -113,6 +119,17 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
   return (
     <div className="space-y-6 p-6">
       <h1 className="text-2xl font-semibold">Need bearbeiten</h1>
+
+      {/* NAME */}
+      <div className="space-y-1">
+        <label className="text-sm text-slate-400">Name der Need</label>
+        <input
+          value={need.name}
+          onChange={(e) => update({ name: e.target.value })}
+          className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
+          placeholder="z.B. RB Salzburg – ZOM – 06122025"
+        />
+      </div>
 
       {/* Position */}
       <div className="space-y-1">
@@ -132,7 +149,9 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
             type="number"
             value={need.minAge ?? ""}
             onChange={(e) =>
-              update({ minAge: e.target.value ? Number(e.target.value) : null })
+              update({
+                minAge: e.target.value ? Number(e.target.value) : null,
+              })
             }
             className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
           />
@@ -144,7 +163,9 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
             type="number"
             value={need.maxAge ?? ""}
             onChange={(e) =>
-              update({ maxAge: e.target.value ? Number(e.target.value) : null })
+              update({
+                maxAge: e.target.value ? Number(e.target.value) : null,
+              })
             }
             className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
           />
@@ -211,7 +232,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
                 .filter(Boolean),
             })
           }
-          placeholder="Bundesliga, Zweite Liga, ..."
+          placeholder="Bundesliga, Zweite Liga …"
           className="bg-slate-900 border border-slate-700 p-2 rounded w-full"
         />
       </div>
@@ -219,6 +240,7 @@ export default function EditNeedPage({ params }: { params: { id: string } }) {
       {/* Minimum-Stats */}
       <div className="space-y-2">
         <label className="text-sm text-slate-400">Mindest-Stats (0–100)</label>
+
         <div className="grid grid-cols-3 gap-3">
           {Object.keys(EMPTY_STATS).map((key) => (
             <div key={key}>

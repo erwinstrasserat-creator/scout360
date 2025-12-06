@@ -1,41 +1,39 @@
-// app/api/export/player/[id]/route.ts
 import { NextResponse } from "next/server";
-import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium-min";
+import { adminDb } from "@/lib/firebaseAdmin";   // <- Admin SDK
 
 export const runtime = "nodejs";
 
-/* ----------------------------------------
-   Puppeteer
----------------------------------------- */
-import puppeteer from "puppeteer-core";
-import chromium from "@sparticuz/chromium-min";
-
+// ----------------------------------------
+// PDF GENERATOR
+// ----------------------------------------
 async function generatePdf(html: string): Promise<Uint8Array> {
   const execPath = await chromium.executablePath();
 
   const browser = await puppeteer.launch({
     executablePath: execPath,
-    args: chromium.args,
     headless: true,
+    args: chromium.args,
+    defaultViewport: chromium.defaultViewport,
   });
 
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: "networkidle0" });
 
-  const pdfBuffer = await page.pdf({
+  const pdf = await page.pdf({
     format: "A4",
     printBackground: true,
   });
 
   await browser.close();
 
-  return new Uint8Array(pdfBuffer);
+  return new Uint8Array(pdf);
 }
 
-/* ----------------------------------------
-   Route
----------------------------------------- */
+// ----------------------------------------
+// ROUTE
+// ----------------------------------------
 export async function GET(req: Request, { params }: any) {
   try {
     const { id } = params;
@@ -47,72 +45,49 @@ export async function GET(req: Request, { params }: any) {
     const url = new URL(req.url);
     const includeReports = url.searchParams.get("reports") === "1";
 
-    // Spieler laden
-    const snap = await getDoc(doc(db, "players", id));
-    if (!snap.exists()) {
+    // Player laden (Admin SDK ➜ keine Permission Errors)
+    const snap = await adminDb.collection("players").doc(id).get();
+
+    if (!snap.exists) {
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
+
     const player = snap.data();
 
     // Reports laden
     let reports: any[] = [];
     if (includeReports) {
-      const q = query(collection(db, "reports"), where("playerId", "==", id));
-      const rs = await getDocs(q);
+      const rs = await adminDb
+        .collection("reports")
+        .where("playerId", "==", id)
+        .get();
+
       reports = rs.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
 
-    // HTML
     const html = `
       <html>
-        <head>
-          <meta charset="utf-8" />
-          <style>
-            body { font-family: Arial, sans-serif; padding: 24px; }
-            h1 { font-size: 22px; }
-            h2 { font-size: 18px; margin-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <h1>Spielerprofil – ${player.name}</h1>
+        <body style="font-family: Arial; padding: 24px;">
+          <h1>Spieler – ${player.name}</h1>
+          <p>Alter: ${player.age ?? "-"}</p>
+          <p>Verein: ${player.club ?? "-"}</p>
+          <p>Position: ${player.position ?? "-"}</p>
 
-          <p><b>Alter:</b> ${player.age ?? "-"}<br/>
-          <b>Verein:</b> ${player.club ?? "-"}<br/>
-          <b>Liga:</b> ${player.league ?? "-"}<br/>
-          <b>Position:</b> ${player.position ?? "-"}<br/>
-          <b>Größe:</b> ${player.heightCm ?? "-"} cm</p>
-
-          ${
-            includeReports
-              ? `
+          ${includeReports ? `
             <h2>Reports</h2>
-            <ul>
-              ${reports
-                .map(
-                  (r) =>
-                    `<li><b>${new Date(r.createdAt).toLocaleDateString(
-                      "de-DE"
-                    )}:</b> ${r.notes}</li>`
-                )
-                .join("")}
-            </ul>
-          `
-              : ""
-          }
+            ${reports.map(r => `<p>${r.notes}</p>`).join("")}
+          ` : ""}
         </body>
       </html>
     `;
 
-    const pdfUint8 = await generatePdf(html);
+    const pdfBytes = await generatePdf(html);
 
-    // 🔥 **ULTIMATIVER FIX: PDF → Base64 → String**
-    const pdfBase64 = Buffer.from(pdfUint8).toString("base64");
-
-    return new NextResponse(pdfBase64, {
+    // 100% gültige PDF-Antwort
+    return new NextResponse(pdfBytes, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${player.name}.pdf"`,
-        "Content-Transfer-Encoding": "base64",
       },
     });
   } catch (err) {
