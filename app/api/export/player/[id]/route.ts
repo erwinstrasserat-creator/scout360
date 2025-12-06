@@ -1,39 +1,43 @@
+// app/api/export/player/[id]/route.ts
 import { NextResponse } from "next/server";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium-min";
-import { adminDb } from "@/lib/firebaseAdmin";
+import { getAdminDb } from "@/lib/firebaseAdmin";
 
 export const runtime = "nodejs";
 
-// ----------------------------------------
-// PDF RENDERING
-// ----------------------------------------
-async function generatePdf(html: string): Promise<Uint8Array> {
+/* ----------------------------------------------------
+   PDF GENERATOR – returns BASE64 string (safe)
+---------------------------------------------------- */
+async function generatePdf(html: string): Promise<string> {
   const execPath = await chromium.executablePath();
 
   const browser = await puppeteer.launch({
     executablePath: execPath,
-    headless: true,
     args: chromium.args,
+    headless: true,
   });
 
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: "networkidle0" });
 
-  const pdf = await page.pdf({
+  const pdfBuffer = await page.pdf({
     format: "A4",
     printBackground: true,
   });
 
   await browser.close();
 
-  return new Uint8Array(pdf);
+  return Buffer.from(pdfBuffer).toString("base64");
 }
 
-// ----------------------------------------
-// ROUTE
-// ----------------------------------------
-export async function GET(req: Request, { params }: any) {
+/* ----------------------------------------------------
+   ROUTE HANDLER
+---------------------------------------------------- */
+export async function GET(
+  req: Request,
+  { params }: { params: { id: string } }
+) {
   try {
     const { id } = params;
 
@@ -41,20 +45,20 @@ export async function GET(req: Request, { params }: any) {
       return NextResponse.json({ error: "Missing id" }, { status: 400 });
     }
 
-    const url = new URL(req.url);
-    const includeReports = url.searchParams.get("reports") === "1";
+    const adminDb = getAdminDb();
 
-    // Spieler laden (Admin SDK)
     const snap = await adminDb.collection("players").doc(id).get();
-
     if (!snap.exists) {
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
 
     const player = snap.data();
 
-    // Reports laden
+    const url = new URL(req.url);
+    const includeReports = url.searchParams.get("reports") === "1";
+
     let reports: any[] = [];
+
     if (includeReports) {
       const rs = await adminDb
         .collection("reports")
@@ -64,46 +68,50 @@ export async function GET(req: Request, { params }: any) {
       reports = rs.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
 
-    // HTML
+    // HTML for PDF
     const html = `
       <html>
         <body style="font-family: Arial; padding: 24px;">
           <h1>Spieler – ${player.name}</h1>
-          <p>Alter: ${player.age ?? "-"}</p>
-          <p>Verein: ${player.club ?? "-"}</p>
-          <p>Position: ${player.position ?? "-"}</p>
+
+          <p><b>Alter:</b> ${player.age ?? "-"}</p>
+          <p><b>Verein:</b> ${player.club ?? "-"}</p>
+          <p><b>Position:</b> ${player.position ?? "-"}</p>
+          <p><b>Größe:</b> ${player.heightCm ?? "-"} cm</p>
 
           ${
             includeReports
               ? `
-            <h2>Reports</h2>
-            ${reports.map((r) => `<p>${r.notes}</p>`).join("")}
-          `
+                <h2>Reports</h2>
+                ${reports
+                  .map(
+                    (r) =>
+                      `<p><b>${new Date(r.createdAt).toLocaleDateString(
+                        "de-DE"
+                      )}:</b> ${r.notes}</p>`
+                  )
+                  .join("")}
+              `
               : ""
           }
         </body>
       </html>
     `;
 
-    const pdfBytes = await generatePdf(html);
+    const base64Pdf = await generatePdf(html);
 
-    // 🔥 TypeScript-konform: Uint8Array → echter ArrayBuffer
-    const arrayBuffer = pdfBytes.buffer.slice(0);
-
-    // 🔥 Blob ist ein sicherer BodyInit Typ
-    const blob = new Blob([arrayBuffer], {
-      type: "application/pdf",
-    });
-
-    return new NextResponse(blob, {
+    return new NextResponse(base64Pdf, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${player.name}.pdf"`,
+        "Content-Transfer-Encoding": "base64",
       },
     });
-
   } catch (err) {
     console.error("PDF Export error:", err);
-    return NextResponse.json({ error: "PDF export failed" }, { status: 500 });
+    return NextResponse.json(
+      { error: "PDF export failed" },
+      { status: 500 }
+    );
   }
 }

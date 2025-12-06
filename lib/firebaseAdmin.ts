@@ -1,27 +1,39 @@
 // lib/firebaseAdmin.ts
 import * as admin from "firebase-admin";
 
-let app: admin.app.App;
+let adminApp: admin.app.App | null = null;
 
 /**
- * Admin SDK Initialisierung
- * Läuft auf Vercel, wenn GOOGLE_APPLICATION_CREDENTIALS_JSON gesetzt ist.
+ * Initialisiert das Admin SDK erst beim ersten Zugriff.
+ * (Nie während des Builds!)
  */
-if (!admin.apps.length) {
-  const serviceAccountJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+function initAdmin() {
+  if (adminApp) return adminApp;
 
-  if (!serviceAccountJson) {
-    throw new Error(
-      "❌ Fehlende Variable: GOOGLE_APPLICATION_CREDENTIALS_JSON"
-    );
+  const json = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+
+  if (!json) {
+    console.warn("⚠️ GOOGLE_APPLICATION_CREDENTIALS_JSON fehlt!");
+    throw new Error("Missing GOOGLE_APPLICATION_CREDENTIALS_JSON");
   }
 
-  const serviceAccount = JSON.parse(serviceAccountJson);
+  const creds = JSON.parse(json);
 
-  app = admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+  adminApp = admin.initializeApp({
+    credential: admin.credential.cert(creds),
   });
+
+  return adminApp;
 }
 
-export const adminDb = admin.firestore();
-export const adminAuth = admin.auth();
+/** Firestore Admin */
+export function getAdminDb() {
+  const app = initAdmin();
+  return admin.firestore(app);
+}
+
+/** Auth Admin */
+export function getAdminAuth() {
+  const app = initAdmin();
+  return admin.auth(app);
+}
