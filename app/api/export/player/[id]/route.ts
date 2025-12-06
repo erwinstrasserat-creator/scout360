@@ -1,3 +1,4 @@
+// app/api/export/player/[id]/route.ts
 import { NextResponse } from "next/server";
 import puppeteer from "puppeteer-core";
 import chromium from "@sparticuz/chromium-min";
@@ -14,20 +15,21 @@ async function generatePdf(html: string): Promise<Uint8Array> {
   const browser = await puppeteer.launch({
     executablePath: execPath,
     args: chromium.args,
-    headless: true,               // <- FIX: Nur TRUE verwenden!
+    headless: true, // wichtig für Vercel, keine chromium.headless-Property
   });
 
   const page = await browser.newPage();
   await page.setContent(html, { waitUntil: "networkidle0" });
 
-  const pdf = await page.pdf({
+  const pdfBuffer = await page.pdf({
     format: "A4",
     printBackground: true,
   });
 
   await browser.close();
 
-  return new Uint8Array(pdf);
+  // pdfBuffer ist ein Buffer, wir geben als Uint8Array zurück
+  return new Uint8Array(pdfBuffer);
 }
 
 // ----------------------------------------
@@ -44,16 +46,16 @@ export async function GET(req: Request, { params }: any) {
     const url = new URL(req.url);
     const includeReports = url.searchParams.get("reports") === "1";
 
-    // Player laden (Admin SDK → keine Firestore-Regeln nötig)
+    // Player laden (Admin SDK → keine Firestore-Regel-Probleme)
     const snap = await adminDb.collection("players").doc(id).get();
 
     if (!snap.exists) {
       return NextResponse.json({ error: "Player not found" }, { status: 404 });
     }
 
-    const player = snap.data();
+    const player = snap.data() as any;
 
-    // Reports laden
+    // Reports laden (optional)
     let reports: any[] = [];
     if (includeReports) {
       const rs = await adminDb
@@ -64,15 +66,16 @@ export async function GET(req: Request, { params }: any) {
       reports = rs.docs.map((d) => ({ id: d.id, ...d.data() }));
     }
 
-    // HTML Template
+    // HTML für PDF
     const html = `
       <html>
         <head>
           <meta charset="utf-8" />
           <style>
             body { font-family: Arial, sans-serif; padding: 24px; }
-            h1 { font-size: 24px; }
-            h2 { margin-top: 24px; }
+            h1 { font-size: 24px; margin-bottom: 8px; }
+            h2 { margin-top: 24px; font-size: 18px; }
+            p { margin: 4px 0; }
           </style>
         </head>
         <body>
@@ -84,15 +87,15 @@ export async function GET(req: Request, { params }: any) {
           <p><b>Größe:</b> ${player.heightCm ?? "-"} cm</p>
 
           ${
-            includeReports
+            includeReports && reports.length
               ? `
                 <h2>Reports</h2>
                 ${reports
                   .map(
                     (r) =>
-                      `<p><b>${new Date(r.createdAt).toLocaleDateString(
-                        "de-DE"
-                      )}:</b> ${r.notes}</p>`
+                      `<p><b>${r.createdAt
+                        ? new Date(r.createdAt).toLocaleDateString("de-DE")
+                        : ""}:</b> ${r.notes ?? ""}</p>`
                   )
                   .join("")}
               `
@@ -104,7 +107,10 @@ export async function GET(req: Request, { params }: any) {
 
     const pdfBytes = await generatePdf(html);
 
-    return new NextResponse(pdfBytes, {
+    // ✅ TS-freundlich: Uint8Array → Blob, Blob ist gültiger BodyInit
+    const blob = new Blob([pdfBytes], { type: "application/pdf" });
+
+    return new NextResponse(blob, {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="${player.name}.pdf"`,
