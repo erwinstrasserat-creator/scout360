@@ -12,9 +12,7 @@ export async function GET(
   { params }: { params: { id: string } }
 ) {
   try {
-    const id = params.id;
-
-    const ref = doc(db, "players", id);
+    const ref = doc(db, "players", params.id);
     const snap = await getDoc(ref);
 
     if (!snap.exists()) {
@@ -25,19 +23,12 @@ export async function GET(
     }
 
     return NextResponse.json(
-      { id, ...snap.data() },
+      { id: snap.id, ...snap.data() },
       { status: 200 }
     );
-
   } catch (err: any) {
-    console.error("API ERROR /api/player/[id]:", err);
-
     return NextResponse.json(
-      {
-        error: "Failed to load player",
-        message: err?.message,
-        stack: err?.stack,
-      },
+      { error: err.message || "Unknown error" },
       { status: 500 }
     );
   }
