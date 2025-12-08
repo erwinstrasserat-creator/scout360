@@ -1,6 +1,9 @@
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 
+// 🔥 Firebase MUSS hier global geladen werden!
+import "@/lib/firebase";
+
 export const metadata = {
   title: "Scout360",
   description: "Internes Scouting-Tool",
