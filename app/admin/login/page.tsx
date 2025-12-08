@@ -2,9 +2,7 @@
 
 import { Suspense, FormEvent, useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth, db } from "@/lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
-import { useRouter, useSearchParams } from "next/navigation";
+import { auth } from "@/lib/firebase";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -12,29 +10,21 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const router = useRouter();
-  const params = useSearchParams();
-  const redirectTo = params.get("from") || "/admin";
-
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
-
-    if (typeof window === "undefined") return;
-
     setError(null);
     setLoading(true);
 
     try {
-      const cred = await signInWithEmailAndPassword(auth, email, password);
-      const uid = cred.user.uid;
+      // Nur Firebase Login – NICHTS anderes
+      await signInWithEmailAndPassword(auth, email, password);
 
-      const roleSnap = await getDoc(doc(db, "userRoles", uid));
-      const role = roleSnap.exists() ? roleSnap.data().role : "none";
+      // WICHTIG:
+      // AuthContext übernimmt:
+      //  - Role laden
+      //  - Cookies setzen
+      //  - Weiterleitung nach /admin
 
-      document.cookie = `auth=true; Path=/; Max-Age=86400; SameSite=None; Secure`;
-      document.cookie = `role=${role}; Path=/; Max-Age=86400; SameSite=None; Secure`;
-
-      router.push(redirectTo);
     } catch (err) {
       console.error(err);
       setError("Login fehlgeschlagen – bitte prüfen.");
