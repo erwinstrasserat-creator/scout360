@@ -1,27 +1,19 @@
-import "./globals.css";
-import { AuthProvider } from "@/context/AuthContext";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-// 🔥 Firebase MUSS hier global geladen werden!
-import "@/lib/firebase";
+/* Global Body Styling, mobile-friendly */
+body {
+  @apply bg-slate-950 text-slate-100 min-h-screen antialiased;
+}
 
-export const metadata = {
-  title: "Scout360",
-  description: "Internes Scouting-Tool",
-};
+/* Mobile Safari Fixes */
+html, body {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <html lang="de" suppressHydrationWarning>
-      <body className="bg-slate-950 text-slate-50 min-h-screen">
-        {/* Globaler Auth Provider, Client-Side */}
-        <AuthProvider>
-          <main className="min-h-screen">{children}</main>
-        </AuthProvider>
-      </body>
-    </html>
-  );
+/* Prevent pull-to-refresh glow on mobile */
+body {
+  overscroll-behavior-y: none;
 }
