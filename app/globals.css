@@ -1,7 +1,27 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+import "./globals.css";
+import { AuthProvider } from "@/context/AuthContext";
 
-body {
-  @apply bg-slate-950 text-slate-100;
+// 🔥 Firebase MUSS hier global geladen werden!
+import "@/lib/firebase";
+
+export const metadata = {
+  title: "Scout360",
+  description: "Internes Scouting-Tool",
+};
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="de" suppressHydrationWarning>
+      <body className="bg-slate-950 text-slate-50 min-h-screen">
+        {/* Globaler Auth Provider, Client-Side */}
+        <AuthProvider>
+          <main className="min-h-screen">{children}</main>
+        </AuthProvider>
+      </body>
+    </html>
+  );
 }
